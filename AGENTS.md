@@ -95,9 +95,105 @@ tqa-framework/
 - **ClickHouse** (10.0.0.60:8123, `db=forex`) — forex M1 бары
 - **PostgreSQL** (10.0.0.60:5432, `db=moex`) — состояние, конфиги
 - **PostgreSQL** (10.0.0.60:5432, `db=forex`) — forex состояние
-- **Binance/Bybit API** — crypto данные
+---
 
-## Аудит
+## Использование в других проектах
+
+### Установка
+
+```bash
+pip install git+https://github.com/xcvtr/tqa-framework.git
+```
+
+### Контракт стратегии
+
+В проекте-стратегии создать `strategies/<name>/detect.py` и `tick.py`:
+
+```
+<project>/
+├── strategies/
+│   ├── dragon/
+│   │   ├── detect.py    # def detect(bars, config) → list[Signal]
+│   │   └── tick.py      # def evaluate_position(position, price, config) → str
+│   └── ...
+```
+
+**detect.py:**
+```python
+from tqa_framework.engine.exchange_base import Signal
+
+def detect(bars: list[dict], config: dict) -> list[Signal]:
+    """bars: [{ts, open, high, low, close, volume}, ...]"""
+    signals = []
+    if bars[-1]["close"] > bars[-2]["close"]:
+        signals.append(Signal(
+            symbol=config["symbol"],
+            direction="LONG",
+            price=bars[-1]["close"],
+            timestamp=bars[-1]["ts"],
+            strategy="dragon",
+        ))
+    return signals
+```
+
+**tick.py:**
+```python
+from tqa_framework.engine.exchange_base import Position
+
+def evaluate_position(position: Position, price: float, config: dict) -> str:
+    """'hold' | 'sl' | 'tp' | 'trailing' | 'timeout'"""
+    return "hold"
+```
+
+### Запуск
+
+```bash
+# Из проекта со стратегиями
+python -m engine.cli \
+    --ch-db moex \
+    backtest \
+    --tickers MIX,GZ \
+    --strategy dragon \
+    --strategy-path ~/projects/TQA-MOEX \
+    --tf 60 --days 365 --risk-pct 2
+```
+
+### Просмотр результатов
+
+```bash
+# Список запусков
+python -m engine.cli results
+python -m engine.cli results --top          # лучшие по Calmar
+python -m engine.cli results --id 5         # детали
+
+# Equity curve → PNG → в чат
+python3 ~/scripts/bt_report.py --id 5 --png --send-matrix
+# MEDIA: ~/.hermes/browser_screenshots/bt_5.png (включить в ответ)
+
+# Список запусков
+python3 ~/scripts/bt_report.py --list
+```
+
+### Тестовый PG
+
+```bash
+cd ~/projects/tqa-framework
+./docker/pg.sh start     # localhost:5433, изолирован от прода
+./docker/pg.sh reset     # сбросить данные
+./docker/pg.sh psql      # psql
+```
+
+Результаты: `backtest.trades`, `backtest.equity_curve`, `backtest.summary`.
+Для отправки картинки: `MEDIA:/home/user/.hermes/browser_screenshots/bt_N.png` в ответе агента.
+
+### Рынки и executor'ы
+
+| `--ch-db` | Источник | Тикеры |
+|:----------|:---------|:-------|
+| `moex` | CH `moex.bars` | MIX, GZ, MM, Si, GD, RN... |
+| `forex` | CH `forex.bars` | EURUSD, GBPJPY, AUDUSD... |
+
+Executor'ы (live) — заглушки, реализуются в проектах-стратегиях.
 
 - Комиссия: round-trip 8₽ (MOEX)
 - Trend filter: без look-ahead (`m1[:i]`)

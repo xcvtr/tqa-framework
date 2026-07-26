@@ -225,7 +225,7 @@ class Backtester:
 
         # Сохранить в PG (summary первой, чтобы получить id)
         summary_id = self.pg.save_summary(summary)
-        self.pg.save_trades_batch(all_trades)
+        self.pg.save_trades_batch(all_trades, summary_id)
         self.pg.save_equity_points(all_equity, summary_id)
 
         return {"summary": summary, "summary_id": summary_id,

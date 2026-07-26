@@ -90,7 +90,8 @@ class PGState:
                     pnl float,
                     pnl_pct float,
                     exit_reason text,
-                    tags jsonb DEFAULT '[]'
+                    tags jsonb DEFAULT '[]',
+                    summary_id int REFERENCES backtest.summary(id) ON DELETE CASCADE
                 )
             """)
             cur.execute("""
@@ -142,7 +143,7 @@ class PGState:
                         %(tags)s::jsonb)
             """, trade)
 
-    def save_trades_batch(self, trades: list[dict]):
+    def save_trades_batch(self, trades: list[dict], summary_id: int = 0):
         """Сохранить список сделок батчем."""
         if not trades:
             return
@@ -154,7 +155,8 @@ class PGState:
                     (strategy, ticker, direction,
                      entry_time, exit_time,
                      entry_price, exit_price,
-                     quantity, pnl, pnl_pct, exit_reason, tags)
+                     quantity, pnl, pnl_pct, exit_reason, tags,
+                     summary_id)
                 VALUES %s
                 """,
                 trades,
@@ -162,7 +164,8 @@ class PGState:
                          "%(entry_time)s, %(exit_time)s, "
                          "%(entry_price)s, %(exit_price)s, "
                          "%(quantity)s, %(pnl)s, %(pnl_pct)s, "
-                         "%(exit_reason)s, %(tags)s::jsonb)"
+                         "%(exit_reason)s, %(tags)s::jsonb, "
+                         f"{summary_id})"
             )
 
     def save_equity_points(self, points: list[dict], summary_id: int = 0):

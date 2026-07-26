@@ -1,0 +1,22 @@
+# Template конфига стратегии
+strategy:
+  name: dragon
+  version: "1.0"
+
+tickers:
+  - symbol: MM
+    tf: 3
+    risk_pct: 2
+    active: true
+  - symbol: GZ
+    tf: 5
+    risk_pct: 2
+    active: true
+
+risk:
+  max_conc: 6
+  base_risk: 1.0
+
+executor:
+  name: mock
+  testnet: true

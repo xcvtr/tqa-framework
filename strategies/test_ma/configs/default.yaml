@@ -1,0 +1,23 @@
+# Test MA strategy config
+strategy: test_ma
+version: "1.0"
+
+tickers:
+  - symbol: MM
+    tf: 60
+    risk_pct: 2
+    active: true
+
+risk:
+  max_conc: 3
+  base_risk: 1.0
+
+executor:
+  name: mock
+  testnet: true
+
+# Strategy-specific params
+fast_ma: 5
+slow_ma: 20
+sl_pct: 0.02
+tp_pct: 0.05

@@ -1,0 +1,28 @@
+# Defaults — переопределяются в стратегиях
+risk:
+  max_conc: 6
+  base_risk: 1.0
+  max_risk: 1.25
+  equity: 100000  # стартовый капитал
+
+executor:
+  testnet: true
+
+sl:
+  pct: 0.03       # 3%
+
+tp:
+  pct: 0.05       # 5%
+
+trailing:
+  activation: 0.05  # 5% от entry
+  distance: 0.003   # 0.3% откат
+
+session_filter:
+  enabled: true
+  start_hour: 0
+  end_hour: 24
+
+trend_filter:
+  enabled: false
+  sma_period: 50

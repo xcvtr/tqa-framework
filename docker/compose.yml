@@ -1,0 +1,24 @@
+# Тестовый PostgreSQL для разработки и отладки стратегий
+# Прод: 10.0.0.60:5432 — не трогать
+# Тест: localhost:5433 — можно ломать
+
+services:
+  pg:
+    image: postgres:16-alpine
+    container_name: tqa-pg-test
+    ports:
+      - "127.0.0.1:5433:5432"
+    environment:
+      POSTGRES_PASSWORD: tqa
+      POSTGRES_DB: tqa
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tqa"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pg-data:

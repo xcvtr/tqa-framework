@@ -1,0 +1,20 @@
+# Схема конфига стратегии
+strategy:
+  name: str
+  version: str
+
+tickers:
+  - symbol: str              # Тикер (GD, GZ, MM, Si...)
+    tf: int                  # Detect TФ в минутах (3, 5, 10, 15, 30, 60)
+    risk_pct: float          # Риск % на сделку
+    active: bool             # Включён в портфель
+
+risk:
+  max_conc: int              # Макс. одновременных позиций
+  base_risk: float           # Базовый risk %
+
+executor:
+  name: str                  # binance | alor | mt5 | mock
+  testnet: bool
+  api_key: str
+  api_secret: str

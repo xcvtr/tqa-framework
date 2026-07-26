@@ -23,14 +23,16 @@ def load_m1_from_ch(
     hours: int,
     host: str = "",
     db: str = "",
+    end_time: str = "",
 ) -> list[dict]:
     """Загрузить M1 бары из ClickHouse.
 
     Args:
         symbol: Тикер (GD, GZ, EURUSD и т.д.)
-        hours: За сколько часов загрузить
+        hours: За сколько часов до end_time загрузить
         host: CH URL (из CH_URL env или по умолчанию)
         db: БД (moex, forex)
+        end_time: Фиксированное окончание (ISO). Если пусто — now()
 
     Returns:
         list[dict] с ключами: ts, open, high, low, close, volume
@@ -38,6 +40,8 @@ def load_m1_from_ch(
     url = host or _CH_URL
     if not db:
         raise ValueError("db обязателен: 'moex' или 'forex'")
+
+    end_condition = f"'{end_time}'" if end_time else "now()"
 
     query = f"""
     SELECT
@@ -49,7 +53,8 @@ def load_m1_from_ch(
         vol as volume
     FROM {db}.bars
     WHERE ticker = '{symbol}'
-      AND bt >= now() - INTERVAL {hours} HOUR
+      AND bt >= {end_condition} - INTERVAL {hours} HOUR
+      AND bt <= {end_condition}
     ORDER BY bt
     FORMAT JSONEachRow
     """

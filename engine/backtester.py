@@ -108,6 +108,19 @@ class Backtester:
         self.pg.ensure_schemas()
         self.pg.ensure_tables_backtest()
 
+        # Зафиксировать конец периода — последний бар в CH
+        import requests as _req
+        _r = _req.get(self.ch_host, params={
+            "query": f"SELECT max(bt) FROM {self.ch_db}.bars FORMAT TabSeparated"
+        }, timeout=15)
+        _r.raise_for_status()
+        ch_latest = _r.text.strip()
+        end_time = ch_latest if ch_latest else ""
+        if end_time:
+            logger.info("CH последний бар: %s", end_time)
+        else:
+            logger.warning("Не удалось определить последний бар, используется now()")
+
         equity = self.initial_equity
         peak = equity
         all_trades: list[dict] = []
@@ -119,10 +132,12 @@ class Backtester:
             tf = ticker_cfg.get("tf", self.tf_minutes)
             rpct = ticker_cfg.get("risk_pct", self.risk_pct)
 
-            logger.info("Загрузка %s за %d дней...", symbol, self.days)
+            logger.info("Загрузка %s за %d дней до %s...",
+                        symbol, self.days, end_time or "now()")
             bars = load_m1_from_ch(
                 symbol, self.days * 24,
                 self.ch_host, self.ch_db,
+                end_time=end_time,
             )
 
             if not bars:
@@ -176,20 +191,22 @@ class Backtester:
                             positions.append(pos)
 
                 # --- 3. Equity ---
-                # Close только тех, что по этому символу
                 active = [p for p in positions if not p.get("closed")]
                 mtm_pnl = sum(self._mtm(p, price) for p in active if p["symbol"] == symbol)
-                # Для других символов — последняя цена
                 other_pnl = sum(self._mtm_last(p) for p in active if p["symbol"] != symbol)
-                total_pnl = mtm_pnl + other_pnl
-                equity = self.initial_equity + sum(t["pnl"] for t in all_trades) + total_pnl
+                unrealized = mtm_pnl + other_pnl
+                realized = sum(t["pnl"] for t in all_trades)
+                cash_equity = self.initial_equity + realized
+                mtm_equity = cash_equity + unrealized
+                equity = mtm_equity
                 peak = max(peak, equity)
                 dd = (equity - peak) / peak * 100 if peak > 0 else 0
 
                 all_equity.append({
                     "strategy": self.strategy_name,
                     "bar_time": bar_time,
-                    "equity": round(equity, 2),
+                    "equity": round(mtm_equity, 2),
+                    "cash_equity": round(cash_equity, 2),
                     "drawdown": round(dd, 2),
                 })
 
@@ -206,12 +223,13 @@ class Backtester:
         # --- Итоги ---
         summary = self._calc_summary(all_trades, all_equity, equity)
 
-        # Сохранить в PG
+        # Сохранить в PG (summary первой, чтобы получить id)
+        summary_id = self.pg.save_summary(summary)
         self.pg.save_trades_batch(all_trades)
-        self.pg.save_equity_points(all_equity)
-        self.pg.save_summary(summary)
+        self.pg.save_equity_points(all_equity, summary_id)
 
-        return {"summary": summary, "trades": all_trades, "equity_curve": all_equity}
+        return {"summary": summary, "summary_id": summary_id,
+                "trades": all_trades, "equity_curve": all_equity}
 
     # --- Внутренние методы ---
 

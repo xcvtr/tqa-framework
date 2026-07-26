@@ -99,7 +99,9 @@ class PGState:
                     strategy text,
                     bar_time timestamptz,
                     equity float,
-                    drawdown float
+                    cash_equity float DEFAULT 0,
+                    drawdown float,
+                    summary_id int REFERENCES backtest.summary(id) ON DELETE CASCADE
                 )
             """)
             cur.execute("""
@@ -163,7 +165,7 @@ class PGState:
                          "%(exit_reason)s, %(tags)s::jsonb)"
             )
 
-    def save_equity_points(self, points: list[dict]):
+    def save_equity_points(self, points: list[dict], summary_id: int = 0):
         """Сохранить точки equity кривой."""
         if not points:
             return
@@ -172,14 +174,18 @@ class PGState:
                 cur,
                 """
                 INSERT INTO backtest.equity_curve
-                    (strategy, bar_time, equity, drawdown)
+                    (strategy, bar_time, equity, cash_equity, drawdown, summary_id)
                 VALUES %s
                 """,
-                [(p["strategy"], p["bar_time"], p["equity"], p["drawdown"]) for p in points],
+                [(p["strategy"], p["bar_time"], p["equity"],
+                  p.get("cash_equity", 0), p["drawdown"], summary_id) for p in points],
             )
 
-    def save_summary(self, summary: dict):
-        """Сохранить итоговую сводку бэктеста."""
+    def save_summary(self, summary: dict) -> int:
+        """Сохранить итоговую сводку бэктеста.
+        Returns:
+            id вставленной записи
+        """
         with self.conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO backtest.summary
@@ -191,7 +197,9 @@ class PGState:
                         %(start_equity)s, %(end_equity)s, %(total_return)s,
                         %(mdd)s, %(win_rate)s, %(profit_factor)s,
                         %(total_trades)s, %(calmar_ratio)s, %(params)s::jsonb)
+                RETURNING id
             """, summary)
+            return cur.fetchone()[0]
 
     def load_summaries(self, strategy: str, limit: int = 10) -> list[dict]:
         """Загрузить последние сводки бэктеста."""

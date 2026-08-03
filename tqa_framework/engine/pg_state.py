@@ -76,6 +76,26 @@ class PGState:
         """Создать таблицы для бэктеста."""
         with self.conn.cursor() as cur:
             cur.execute("CREATE SCHEMA IF NOT EXISTS backtest")
+            # summary первой — trades/equity_curve ссылаются на неё
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS backtest.summary (
+                    id SERIAL PRIMARY KEY,
+                    strategy text,
+                    tickers text[],
+                    tf int,
+                    days int,
+                    start_equity float,
+                    end_equity float,
+                    total_return float,
+                    mdd float,
+                    win_rate float,
+                    profit_factor float,
+                    total_trades int,
+                    calmar_ratio float,
+                    params jsonb,
+                    created_at timestamptz DEFAULT now()
+                )
+            """)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS backtest.trades (
                     id SERIAL PRIMARY KEY,
@@ -103,25 +123,6 @@ class PGState:
                     cash_equity float DEFAULT 0,
                     drawdown float,
                     summary_id int REFERENCES backtest.summary(id) ON DELETE CASCADE
-                )
-            """)
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS backtest.summary (
-                    id SERIAL PRIMARY KEY,
-                    strategy text,
-                    tickers text[],
-                    tf int,
-                    days int,
-                    start_equity float,
-                    end_equity float,
-                    total_return float,
-                    mdd float,
-                    win_rate float,
-                    profit_factor float,
-                    total_trades int,
-                    calmar_ratio float,
-                    params jsonb,
-                    created_at timestamptz DEFAULT now()
                 )
             """)
 

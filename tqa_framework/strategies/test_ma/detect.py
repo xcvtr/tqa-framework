@@ -1,7 +1,7 @@
 """Test strategy — простой MA crossover для проверки backtester'а."""
 from __future__ import annotations
 
-from engine.exchange_base import Signal
+from tqa_framework.engine.exchange_base import Signal
 
 
 def detect(bars: list[dict], config: dict) -> list[Signal]:

@@ -77,8 +77,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def cmd_backtest(args):
     """Запустить бэктест."""
-    from engine.pg_state import PGState
-    from engine.backtester import Backtester
+    from tqa_framework.engine.pg_state import PGState
+    from tqa_framework.engine.backtester import Backtester
 
     pg = PGState(pg_url=args.pg_url)
 
@@ -128,8 +128,8 @@ def cmd_backtest(args):
 
 def cmd_grid(args):
     """Запустить sweep параметров."""
-    from engine.pg_state import PGState
-    from engine.backtester import Backtester
+    from tqa_framework.engine.pg_state import PGState
+    from tqa_framework.engine.backtester import Backtester
     import itertools
 
     pg = PGState(pg_url=args.pg_url)
@@ -191,7 +191,7 @@ def cmd_paper(args):
 
 def cmd_results(args):
     """Показать результаты бэктестов из PG."""
-    from engine.pg_state import PGState
+    from tqa_framework.engine.pg_state import PGState
 
     pg = PGState(pg_url=args.pg_url)
     pg.ensure_tables_backtest()

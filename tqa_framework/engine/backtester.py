@@ -21,10 +21,10 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Callable
 
-from engine.exchange_base import Position, Signal
-from engine.detect import load_m1_from_ch, resample_bars, dedup_signals
-from engine.risk import calc_risk_mult, calc_contracts, sma_50_trend
-from engine.pg_state import PGState
+from tqa_framework.engine.exchange_base import Position, Signal
+from tqa_framework.engine.detect import load_m1_from_ch, resample_bars, dedup_signals
+from tqa_framework.engine.risk import calc_risk_mult, calc_contracts, sma_50_trend
+from tqa_framework.engine.pg_state import PGState
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,24 @@ class Backtester:
         ch_db: str = "",
         max_conc: int = 6,
         strategy_path: str = "",
+        market: str = "moex",
+        point: Optional[dict] = None,
+        pip_value: float = 10.0,
+        commission_per_lot: float = 0.0,
+        spread_points: Optional[dict] = None,
+        swap_per_night: Optional[dict] = None,
     ):
+        """Бэктестер.
+
+        market='moex'  — pnl = (exit-entry) × quantity (контракты, комиссия 8₽)
+        market='forex' — pnl = (exit-entry)/point × pip_value × lot + комиссия + своп
+
+        point: dict {symbol: point} — пункт MT5 (EURUSD=1e-5, USDJPY=0.001, XAU=0.01)
+        pip_value: $ за пункт на 1 лот (AlfaForex: 10.0)
+        commission_per_lot: $ за 1 лот round-trip
+        spread_points: dict {symbol: spread в пунктах} — вычитается из pnl
+        swap_per_night: dict {symbol: (long_swap, short_swap) в пунктах} — за ночь
+        """
         self.tickers = tickers
         self.days = days
         self.risk_pct = risk_pct
@@ -59,6 +76,12 @@ class Backtester:
         self.ch_host = ch_host
         self.ch_db = ch_db
         self.max_conc = max_conc
+        self.market = market
+        self.point = point or {}
+        self.pip_value = pip_value
+        self.commission_per_lot = commission_per_lot
+        self.spread_points = spread_points or {}
+        self.swap_per_night = swap_per_night or {}
 
         self._detect_fn: Optional[Callable] = None
         self._tick_fn: Optional[Callable] = None
@@ -110,9 +133,12 @@ class Backtester:
 
         # Зафиксировать конец периода — последний бар в CH
         import requests as _req
-        _r = _req.get(self.ch_host, params={
-            "query": f"SELECT max(bt) FROM {self.ch_db}.bars FORMAT TabSeparated"
-        }, timeout=15)
+        if self.ch_db == "forex":
+            _sym0 = self.tickers[0]["symbol"]
+            _q = (f"SELECT max(time) FROM forex.bars WHERE symbol='{_sym0}' FORMAT TabSeparated")
+        else:
+            _q = f"SELECT max(bt) FROM {self.ch_db}.bars FORMAT TabSeparated"
+        _r = _req.get(self.ch_host, params={"query": _q}, timeout=15)
         _r.raise_for_status()
         ch_latest = _r.text.strip()
         end_time = ch_latest if ch_latest else ""
@@ -238,7 +264,12 @@ class Backtester:
     ) -> Optional[dict]:
         """Открыть позицию по сигналу."""
         risk_mult = calc_risk_mult(equity)
-        qty = calc_contracts(equity, risk_pct * risk_mult, signal.price, signal.price)
+        if self.market == "forex":
+            # Лот от риска: риск $ = equity × risk_pct; SL в пипсах → лот
+            sl_pips = max(self.strategy_params.get("sl_pips", 100.0), 10.0)
+            qty = max(0.01, round(equity * risk_pct * risk_mult / (sl_pips * self.pip_value), 2))
+        else:
+            qty = calc_contracts(equity, risk_pct * risk_mult, signal.price, signal.price)
         if qty <= 0:
             return None
         return {
@@ -256,6 +287,8 @@ class Backtester:
             "exit_price": None,
             "exit_time": None,
             "_last_price": signal.price,
+            "_entry_dt": bar_time,
+            "_swap_acc": 0.0,
         }
 
     def _close_position(
@@ -264,10 +297,25 @@ class Backtester:
     ):
         """Закрыть позицию и записать сделку."""
         direction = pos["direction"]
-        pnl = (price - pos["entry_price"]) * pos["quantity"]
-        if direction == "SHORT":
-            pnl = -pnl
-        pnl_pct = pnl / (pos["entry_price"] * pos["quantity"]) * 100
+        if self.market == "forex":
+            sym = pos["symbol"].lower()
+            pt = self.point.get(sym, 1e-5)
+            pnl = (price - pos["entry_price"]) / pt * self.pip_value * pos["quantity"]
+            if direction == "SHORT":
+                pnl = -pnl
+            # спред (в пунктах) — платим при входе+выходе
+            spr = self.spread_points.get(sym, 0.0)
+            pnl -= spr * self.pip_value * pos["quantity"]
+            # комиссия
+            pnl -= self.commission_per_lot * pos["quantity"]
+            # свопы за ночь
+            pnl -= pos.get("_swap_acc", 0.0)
+            pnl_pct = pnl / (pos["entry_price"] * pos["quantity"]) * 100
+        else:
+            pnl = (price - pos["entry_price"]) * pos["quantity"]
+            if direction == "SHORT":
+                pnl = -pnl
+            pnl_pct = pnl / (pos["entry_price"] * pos["quantity"]) * 100
 
         trades.append({
             "strategy": self.strategy_name,
@@ -291,6 +339,14 @@ class Backtester:
         """MTM по текущей цене."""
         pos["_last_price"] = price
         direction = pos["direction"]
+        if self.market == "forex":
+            sym = pos["symbol"].lower()
+            pt = self.point.get(sym, 1e-5)
+            pnl = (price - pos["entry_price"]) / pt * self.pip_value * pos["quantity"]
+            if direction == "SHORT":
+                pnl = -pnl
+            # накопление свопа (грубо: каждый тик = ночь, только для дневных баров)
+            return pnl - pos.get("_swap_acc", 0.0)
         pnl = (price - pos["entry_price"]) * pos["quantity"]
         if direction == "SHORT":
             pnl = -pnl

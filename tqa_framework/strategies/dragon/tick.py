@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from engine.exchange_base import Position
+from tqa_framework.engine.exchange_base import Position
 
 
 def evaluate_position(position: Position, price: float,

@@ -12,7 +12,7 @@ import requests
 
 import json
 
-from engine.exchange_base import Signal
+from tqa_framework.engine.exchange_base import Signal
 
 
 _CH_URL = os.environ.get("CH_URL", "http://10.0.0.60:8123")
@@ -26,6 +26,10 @@ def load_m1_from_ch(
     end_time: str = "",
 ) -> list[dict]:
     """Загрузить M1 бары из ClickHouse.
+
+    Поддерживает две схемы:
+      - moex:   таблица moex.bars (ticker, bt, opn, hi, lo, prc, vol)
+      - forex:  таблица forex.bars (symbol, time, open, high, low, close, vol)
 
     Args:
         symbol: Тикер (GD, GZ, EURUSD и т.д.)
@@ -43,21 +47,45 @@ def load_m1_from_ch(
 
     end_condition = f"'{end_time}'" if end_time else "now()"
 
-    query = f"""
-    SELECT
-        bt as ts,
-        opn as open,
-        hi as high,
-        lo as low,
-        prc as close,
-        vol as volume
-    FROM {db}.bars
-    WHERE ticker = '{symbol}'
-      AND bt >= {end_condition} - INTERVAL {hours} HOUR
-      AND bt <= {end_condition}
-    ORDER BY bt
-    FORMAT JSONEachRow
-    """
+    if db == "forex":
+        # forex.bars: symbol, time, open, high, low, close, vol
+        # end_time строка без tz → конвертируем в DateTime64 с явной таймзоной
+        if end_time:
+            end_ts = f"toDateTime64('{end_time}', 3, 'UTC')"
+        else:
+            end_ts = "now()"
+        query = f"""
+        SELECT
+            toTimeZone(time, 'UTC') as ts,
+            open,
+            high,
+            low,
+            close,
+            vol as volume
+        FROM forex.bars
+        WHERE symbol = '{symbol}'
+          AND time >= {end_ts} - INTERVAL {hours} HOUR
+          AND time <= {end_ts}
+        ORDER BY time
+        FORMAT JSONEachRow
+        """
+    else:
+        # moex.bars: ticker, bt, opn, hi, lo, prc, vol
+        query = f"""
+        SELECT
+            bt as ts,
+            opn as open,
+            hi as high,
+            lo as low,
+            prc as close,
+            vol as volume
+        FROM {db}.bars
+        WHERE ticker = '{symbol}'
+          AND bt >= {end_condition} - INTERVAL {hours} HOUR
+          AND bt <= {end_condition}
+        ORDER BY bt
+        FORMAT JSONEachRow
+        """
 
     resp = requests.get(
         url,
@@ -165,13 +193,13 @@ def dedup_signals(
 
 def trend_filter(trend: str, direction: str, profitable: bool) -> bool:
     """Trend filter: блокирует контр-тренд после прибыльной сделки."""
-    from engine.risk import trend_filter as _tf
+    from tqa_framework.engine.risk import trend_filter as _tf
     return _tf(trend, direction, profitable)
 
 
 def _sma_trend(prices: list[float]) -> str:
     """Определить тренд по SMA 50."""
-    from engine.risk import sma_50_trend
+    from tqa_framework.engine.risk import sma_50_trend
     return sma_50_trend(prices)
 
 

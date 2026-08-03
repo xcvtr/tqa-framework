@@ -7,7 +7,7 @@
 
 ```
 tqa-framework/
-├── engine/                    ← ядро (общее для всех стратегий)
+├── tqa_framework/             ← пакет (бывший engine/) (общее для всех стратегий)
 │   ├── __init__.py
 │   ├── cli.py                 ← единый CLI entry point
 │   ├── exchange_base.py       ← ABC: Position, Signal, ExchangeBase
@@ -43,7 +43,7 @@ tqa-framework/
 ```
        ┌──────────────┐
        │    CLI       │
-       │  engine.cli  │
+       │  tqa_framework.engine.cli │
        └──────┬───────┘
               │
      ┌────────┴────────┐
@@ -149,7 +149,7 @@ def evaluate_position(position: Position, price: float, config: dict) -> str:
 
 ```bash
 # Из проекта со стратегиями
-python -m engine.cli \
+python -m tqa_framework.engine.cli \
     --ch-db moex \
     backtest \
     --tickers MIX,GZ \
@@ -162,9 +162,9 @@ python -m engine.cli \
 
 ```bash
 # Список запусков
-python -m engine.cli results
-python -m engine.cli results --top          # лучшие по Calmar
-python -m engine.cli results --id 5         # детали
+python -m tqa_framework.engine.cli results
+python -m tqa_framework.engine.cli results --top          # лучшие по Calmar
+python -m tqa_framework.engine.cli results --id 5         # детали
 
 # Equity curve → PNG → в чат
 python3 ~/scripts/bt_report.py --id 5 --png --send-matrix

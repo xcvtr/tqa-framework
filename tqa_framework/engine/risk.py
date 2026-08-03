@@ -20,6 +20,19 @@ def calc_contracts(equity: float, risk_pct: float,
     return min(ct_risk, ct_go)
 
 
+def calc_lot_forex(equity: float, risk_pct: float, sl_pips: float,
+                   pip_value: float = 10.0, min_lot: float = 0.01) -> float:
+    """Лот для forex: риск $ / (SL в пипсах × стоимость пипса).
+
+    risk_pct — доля капитала на сделку (0.01 = 1%).
+    sl_pips — стоп в пипсах (pip = 10 × point MT5).
+    pip_value — $ за 1 пипс на 1 лот (AlfaForex: 10.0).
+    """
+    sl_pips = max(sl_pips, 10.0)
+    lot = equity * risk_pct / (sl_pips * pip_value)
+    return max(min_lot, round(lot, 2))
+
+
 def trend_filter(trend: str, direction: str, profitable: bool) -> bool:
     """Trend filter: блокирует контр-тренд после прибыльной сделки."""
     if not profitable:

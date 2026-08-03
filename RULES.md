@@ -7,10 +7,10 @@
 Единый entry point:
 ```bash
 # CLI — единственный способ запуска
-python -m engine.cli --help
+python -m tqa_framework.engine.cli --help
 
 # Бэктест
-python -m engine.cli backtest \
+python -m tqa_framework.engine.cli backtest \
     --tickers GD,GZ,RN \
     --days 365 \
     --risk-pct 2 \
@@ -18,12 +18,12 @@ python -m engine.cli backtest \
     --strategy dragon
 
 # Grid sweep
-python -m engine.cli grid \
+python -m tqa_framework.engine.cli grid \
     --strategy dragon \
     --params '{"tf": [3,5,10], "risk_pct": [1,2,3]}'
 
 # Live paper trader
-python -m engine.cli paper \
+python -m tqa_framework.engine.cli paper \
     --strategy dragon \
     --executor binance
 ```
@@ -68,7 +68,7 @@ tickers:
 
 ```
 strategies/<name>/
-├── detect.py     # signal detection (использует engine/)
+├── detect.py     # signal detection (использует tqa_framework.engine/)
 ├── tick.py       # per-tick: exits, opens, MTM
 ├── configs/      # YAML конфиги
 └── scripts/      # кастомные утилиты

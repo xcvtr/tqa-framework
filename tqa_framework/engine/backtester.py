@@ -72,6 +72,7 @@ class Backtester:
         self.tf_minutes = tf_minutes
         self.strategy_name = strategy_name
         self.strategy_params = strategy_params or {}
+        self.pyramid_max = self.strategy_params.get("pyramid_max", 1)
         self.strategy_path = strategy_path
         self.initial_equity = initial_equity
         self.pg = pg or PGState()
@@ -247,9 +248,18 @@ class Backtester:
                     for sig in signals:
                         if len([p for p in positions if not p.get("closed")]) >= self.max_conc:
                             break
-                        if any(not p.get("closed") and p["symbol"] == sig.symbol
-                               for p in positions):
+                        # Пирамидинг: до pyramid_max позиций на символ (одного направления)
+                        open_sym = [p for p in positions
+                                    if not p.get("closed") and p["symbol"] == sig.symbol]
+                        if len(open_sym) >= self.pyramid_max:
                             continue
+                        if open_sym and any(p["direction"] != sig.direction for p in open_sym):
+                            continue  # не открываем противоположное направление на тот же символ
+                        if not open_sym and any(not p.get("closed") and p["symbol"] == sig.symbol
+                                                for p in positions):
+                            # обычный режим (pyramid_max=1): одна позиция на символ
+                            if self.pyramid_max == 1:
+                                continue
                         # КОНКУРЕНЦИЯ ЗА КАПИТАЛ
                         active = [p for p in positions if not p.get("closed")]
                         used_risk = sum(p.get("_risk_amount", 0.0) for p in active)
@@ -447,5 +457,6 @@ class Backtester:
             "profit_factor": round(profit_factor, 2),
             "total_trades": total_trades,
             "calmar_ratio": round(calmar, 2),
-            "params": json.dumps(self.strategy_params),
+            "params": json.dumps({k: v for k, v in self.strategy_params.items()
+                                  if k != "dom_series"}, default=str),
         }

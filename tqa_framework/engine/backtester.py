@@ -158,6 +158,10 @@ class Backtester:
         all_equity: list[dict] = []
         positions: list[dict] = []  # открытые позиции
 
+        # ── ПОРТФЕЛЬ: загружаем ВСЕ символы, синхронизируем по времени ──
+        sym_bars = {}   # symbol -> list[dict] M1
+        sym_tf = {}     # symbol -> resampled bars
+        sym_rpct = {}   # symbol -> risk_pct
         for ticker_cfg in self.tickers:
             symbol = ticker_cfg["symbol"]
             tf = ticker_cfg.get("tf", self.tf_minutes)
@@ -170,94 +174,112 @@ class Backtester:
                 self.ch_host, self.ch_db,
                 end_time=end_time,
             )
-
             if not bars:
                 logger.warning("Нет данных для %s", symbol)
                 continue
-
             tf_bars = resample_bars(bars, tf)
             logger.info("  → %d баров на TF=%d", len(tf_bars), tf)
+            sym_bars[symbol] = tf_bars
+            sym_tf[symbol] = tf
+            sym_rpct[symbol] = rpct
 
-            # Скользящее окно по барам
-            # ОПТИМИЗАЦИЯ: не копируем tf_bars[:i] каждый бар (O(n²)).
-            # Передаём детектору последние detect_lookback баров.
-            detect_lookback = getattr(self, "detect_lookback", 600)
-            _last_prog = 0
-            for i in range(1, len(tf_bars) + 1):
-                if i // 10000 > _last_prog:
-                    _last_prog = i // 10000
-                    print(f"  {symbol}: бар {i}/{len(tf_bars)}", flush=True)
-                window = tf_bars[max(0, i - detect_lookback):i]
-                current = window[-1]
-                price = current["close"]
-                bar_time = current["ts"]
+        if not sym_bars:
+            logger.error("Нет данных ни по одному символу")
+            return {"summary": {}, "trades": [], "equity_curve": []}
 
-                # --- 1. Тик: проверка открытых позиций ---
-                open_positions = [p for p in positions if p["symbol"] == symbol and not p.get("closed")]
-                for pos_dict in open_positions:
-                    pos = Position(
-                        symbol=pos_dict["symbol"],
-                        direction=pos_dict["direction"],
-                        entry_price=pos_dict["entry_price"],
-                        current_price=price,
-                        quantity=pos_dict["quantity"],
-                        sl_price=pos_dict.get("sl_price"),
-                        tp_price=pos_dict.get("tp_price"),
-                        trail_activation=pos_dict.get("trail_activation"),
-                        trail_distance=pos_dict.get("trail_distance", 0.0),
-                        entry_time=pos_dict.get("entry_time"),
-                    )
-                    reason = self._tick_fn(pos, price, self.strategy_params)
-                    if reason != "hold":
-                        self._close_position(pos_dict, price, bar_time, reason, all_trades)
+        # Общий временной индекс: union всех bar_time (отсортированный)
+        all_times = sorted({b["ts"] for bars in sym_bars.values() for b in bars})
+        # индекс бара по времени для каждого символа
+        sym_idx = {}
+        for symbol, bars in sym_bars.items():
+            sym_idx[symbol] = {b["ts"]: i for i, b in enumerate(bars)}
 
-                # --- 2. Детект: поиск сигналов ---
-                # detect_every: вызываем detect не на каждом баре, а раз в N (для M5-стратегий)
-                if i >= 10 and (i % self.detect_every == 0 or i == len(tf_bars)):
+        detect_lookback = getattr(self, "detect_lookback", 600)
+        _last_prog = 0
+        # ── ЕДИНЫЙ ПОРТФЕЛЬНЫЙ ЦИКЛ: каждый bar_time обрабатываем ВСЕ символы ──
+        for ti, bar_time in enumerate(all_times):
+            if ti // 50000 > _last_prog:
+                _last_prog = ti // 50000
+                print(f"  портфель: бар {ti}/{len(all_times)}", flush=True)
+
+            # текущие цены всех символов на этом bar_time
+            prices = {}
+            for symbol, bars in sym_bars.items():
+                idx = sym_idx[symbol].get(bar_time)
+                if idx is not None and idx < len(bars):
+                    prices[symbol] = bars[idx]["close"]
+
+            # ── 1. Тик: проверка ВСЕХ открытых позиций (по текущим ценам) ──
+            for pos_dict in [p for p in positions if not p.get("closed")]:
+                sym = pos_dict["symbol"]
+                price = prices.get(sym)
+                if price is None:
+                    continue
+                pos = Position(
+                    symbol=sym,
+                    direction=pos_dict["direction"],
+                    entry_price=pos_dict["entry_price"],
+                    current_price=price,
+                    quantity=pos_dict["quantity"],
+                    sl_price=pos_dict.get("sl_price"),
+                    tp_price=pos_dict.get("tp_price"),
+                    trail_activation=pos_dict.get("trail_activation"),
+                    trail_distance=pos_dict.get("trail_distance", 0.0),
+                    entry_time=pos_dict.get("entry_time"),
+                )
+                reason = self._tick_fn(pos, price, self.strategy_params)
+                if reason != "hold":
+                    self._close_position(pos_dict, price, bar_time, reason, all_trades)
+
+            # ── 2. Детект: ВСЕ символы на этом баре ──
+            if ti >= 10 and (ti % self.detect_every == 0 or ti == len(all_times) - 1):
+                for symbol, bars in sym_bars.items():
+                    idx = sym_idx[symbol].get(bar_time)
+                    if idx is None or idx < 10:
+                        continue
+                    window = bars[max(0, idx - detect_lookback + 1):idx + 1]
                     signals = self._detect_fn(window, {
                         **self.strategy_params,
                         "symbol": symbol,
-                        "tf": tf,
-                        "risk_pct": rpct,
+                        "tf": sym_tf[symbol],
+                        "risk_pct": sym_rpct[symbol],
                     })
-
-                    # Открыть новые по сигналам
                     for sig in signals:
                         if len([p for p in positions if not p.get("closed")]) >= self.max_conc:
                             break
-                        # не открывать, если уже есть открытая позиция по символу
                         if any(not p.get("closed") and p["symbol"] == sig.symbol
                                for p in positions):
                             continue
-                        # КОНКУРЕНЦИЯ ЗА КАПИТАЛ: риск от свободного equity
-                        # (equity минус риск уже открытых позиций)
+                        # КОНКУРЕНЦИЯ ЗА КАПИТАЛ
                         active = [p for p in positions if not p.get("closed")]
-                        used_risk = sum(
-                            p.get("_risk_amount", 0.0) for p in active
-                        )
+                        used_risk = sum(p.get("_risk_amount", 0.0) for p in active)
                         free_equity = max(equity - used_risk, equity * 0.1)
-                        pos = self._open_position(sig, free_equity, rpct, bar_time)
+                        pos = self._open_position(sig, free_equity, sym_rpct[symbol], bar_time)
                         if pos:
                             positions.append(pos)
 
-                # --- 3. Equity ---
-                active = [p for p in positions if not p.get("closed")]
-                mtm_pnl = sum(self._mtm(p, price) for p in active if p["symbol"] == symbol)
-                other_pnl = sum(self._mtm_last(p) for p in active if p["symbol"] != symbol)
-                unrealized = mtm_pnl + other_pnl
-                cash_equity = self.initial_equity + self._realized
-                mtm_equity = cash_equity + unrealized
-                equity = mtm_equity
-                peak = max(peak, equity)
-                dd = (equity - peak) / peak * 100 if peak > 0 else 0
+            # ── 3. Equity: MTM всех позиций по текущим ценам ──
+            active = [p for p in positions if not p.get("closed")]
+            unrealized = 0.0
+            for p in active:
+                price = prices.get(p["symbol"])
+                if price is not None:
+                    unrealized += self._mtm(p, price)
+                else:
+                    unrealized += self._mtm_last(p)
+            cash_equity = self.initial_equity + self._realized
+            mtm_equity = cash_equity + unrealized
+            equity = mtm_equity
+            peak = max(peak, equity)
+            dd = (equity - peak) / peak * 100 if peak > 0 else 0
 
-                all_equity.append({
-                    "strategy": self.strategy_name,
-                    "bar_time": bar_time,
-                    "equity": round(mtm_equity, 2),
-                    "cash_equity": round(cash_equity, 2),
-                    "drawdown": round(dd, 2),
-                })
+            all_equity.append({
+                "strategy": self.strategy_name,
+                "bar_time": bar_time,
+                "equity": round(mtm_equity, 2),
+                "cash_equity": round(cash_equity, 2),
+                "drawdown": round(dd, 2),
+            })
 
         # Закрыть оставшиеся позиции по последней цене
         if all_equity:

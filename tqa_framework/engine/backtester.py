@@ -52,6 +52,8 @@ class Backtester:
         commission_per_lot: float = 0.0,
         spread_points: Optional[dict] = None,
         swap_per_night: Optional[dict] = None,
+        detect_every: int = 1,
+        save_results: bool = True,
     ):
         """Бэктестер.
 
@@ -77,6 +79,8 @@ class Backtester:
         self.ch_db = ch_db
         self.max_conc = max_conc
         self.market = market
+        self.detect_every = detect_every
+        self.save_results = save_results
         self.point = point or {}
         self.pip_value = pip_value
         self.commission_per_lot = commission_per_lot
@@ -149,6 +153,7 @@ class Backtester:
 
         equity = self.initial_equity
         peak = equity
+        self._realized = 0.0
         all_trades: list[dict] = []
         all_equity: list[dict] = []
         positions: list[dict] = []  # открытые позиции
@@ -174,14 +179,21 @@ class Backtester:
             logger.info("  → %d баров на TF=%d", len(tf_bars), tf)
 
             # Скользящее окно по барам
+            # ОПТИМИЗАЦИЯ: не копируем tf_bars[:i] каждый бар (O(n²)).
+            # Передаём детектору последние detect_lookback баров.
+            detect_lookback = getattr(self, "detect_lookback", 600)
+            _last_prog = 0
             for i in range(1, len(tf_bars) + 1):
-                window = tf_bars[:i]
+                if i // 10000 > _last_prog:
+                    _last_prog = i // 10000
+                    print(f"  {symbol}: бар {i}/{len(tf_bars)}", flush=True)
+                window = tf_bars[max(0, i - detect_lookback):i]
                 current = window[-1]
                 price = current["close"]
                 bar_time = current["ts"]
 
                 # --- 1. Тик: проверка открытых позиций ---
-                open_positions = [p for p in positions if p["symbol"] == symbol]
+                open_positions = [p for p in positions if p["symbol"] == symbol and not p.get("closed")]
                 for pos_dict in open_positions:
                     pos = Position(
                         symbol=pos_dict["symbol"],
@@ -200,7 +212,8 @@ class Backtester:
                         self._close_position(pos_dict, price, bar_time, reason, all_trades)
 
                 # --- 2. Детект: поиск сигналов ---
-                if i >= 10:  # минимальная прогретая зона
+                # detect_every: вызываем detect не на каждом баре, а раз в N (для M5-стратегий)
+                if i >= 10 and (i % self.detect_every == 0 or i == len(tf_bars)):
                     signals = self._detect_fn(window, {
                         **self.strategy_params,
                         "symbol": symbol,
@@ -212,7 +225,18 @@ class Backtester:
                     for sig in signals:
                         if len([p for p in positions if not p.get("closed")]) >= self.max_conc:
                             break
-                        pos = self._open_position(sig, equity, rpct, bar_time)
+                        # не открывать, если уже есть открытая позиция по символу
+                        if any(not p.get("closed") and p["symbol"] == sig.symbol
+                               for p in positions):
+                            continue
+                        # КОНКУРЕНЦИЯ ЗА КАПИТАЛ: риск от свободного equity
+                        # (equity минус риск уже открытых позиций)
+                        active = [p for p in positions if not p.get("closed")]
+                        used_risk = sum(
+                            p.get("_risk_amount", 0.0) for p in active
+                        )
+                        free_equity = max(equity - used_risk, equity * 0.1)
+                        pos = self._open_position(sig, free_equity, rpct, bar_time)
                         if pos:
                             positions.append(pos)
 
@@ -221,8 +245,7 @@ class Backtester:
                 mtm_pnl = sum(self._mtm(p, price) for p in active if p["symbol"] == symbol)
                 other_pnl = sum(self._mtm_last(p) for p in active if p["symbol"] != symbol)
                 unrealized = mtm_pnl + other_pnl
-                realized = sum(t["pnl"] for t in all_trades)
-                cash_equity = self.initial_equity + realized
+                cash_equity = self.initial_equity + self._realized
                 mtm_equity = cash_equity + unrealized
                 equity = mtm_equity
                 peak = max(peak, equity)
@@ -250,9 +273,12 @@ class Backtester:
         summary = self._calc_summary(all_trades, all_equity, equity)
 
         # Сохранить в PG (summary первой, чтобы получить id)
-        summary_id = self.pg.save_summary(summary)
-        self.pg.save_trades_batch(all_trades, summary_id)
-        self.pg.save_equity_points(all_equity, summary_id)
+        if getattr(self, "save_results", True):
+            summary_id = self.pg.save_summary(summary)
+            self.pg.save_trades_batch(all_trades, summary_id)
+            self.pg.save_equity_points(all_equity, summary_id)
+        else:
+            summary_id = 0
 
         return {"summary": summary, "summary_id": summary_id,
                 "trades": all_trades, "equity_curve": all_equity}
@@ -264,19 +290,22 @@ class Backtester:
     ) -> Optional[dict]:
         """Открыть позицию по сигналу."""
         risk_mult = calc_risk_mult(equity)
+        sl_pips = max(self.strategy_params.get("sl_pips", 100.0), 10.0)
         if self.market == "forex":
             # Лот от риска: риск $ = equity × risk_pct; SL в пипсах → лот
-            sl_pips = max(self.strategy_params.get("sl_pips", 100.0), 10.0)
             qty = max(0.01, round(equity * risk_pct * risk_mult / (sl_pips * self.pip_value), 2))
         else:
             qty = calc_contracts(equity, risk_pct * risk_mult, signal.price, signal.price)
         if qty <= 0:
             return None
+        # риск в $: qty × SL × pip_value
+        risk_amount = qty * sl_pips * self.pip_value
         return {
             "symbol": signal.symbol,
             "direction": signal.direction,
             "entry_price": signal.price,
             "quantity": qty,
+            "_risk_amount": risk_amount,
             "entry_time": bar_time,
             "sl_price": None,
             "tp_price": None,
@@ -331,14 +360,22 @@ class Backtester:
             "exit_reason": reason,
             "tags": '[]',
         })
+        self._realized = getattr(self, "_realized", 0.0) + pnl
         pos["closed"] = True
         pos["exit_price"] = price
         pos["exit_time"] = bar_time
 
     def _mtm(self, pos: dict, price: float) -> float:
-        """MTM по текущей цене."""
+        """MTM по текущей цене + обновление лучшей цены для трейлинга."""
         pos["_last_price"] = price
         direction = pos["direction"]
+        # обновляем trail_activation (лучшая цена)
+        if direction == "LONG":
+            if pos.get("trail_activation") is None or price > pos["trail_activation"]:
+                pos["trail_activation"] = price
+        else:
+            if pos.get("trail_activation") is None or price < pos["trail_activation"]:
+                pos["trail_activation"] = price
         if self.market == "forex":
             sym = pos["symbol"].lower()
             pt = self.point.get(sym, 1e-5)

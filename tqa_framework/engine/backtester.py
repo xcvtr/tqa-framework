@@ -351,12 +351,13 @@ class Backtester:
         if self.market == "forex":
             sym = pos["symbol"].lower()
             pt = self.point.get(sym, 1e-5)
-            pnl = (price - pos["entry_price"]) / pt * self.pip_value * pos["quantity"]
+            pip = 10 * pt  # pip = 10 × point (AlfaForex)
+            pnl = (price - pos["entry_price"]) / pip * self.pip_value * pos["quantity"]
             if direction == "SHORT":
                 pnl = -pnl
             # спред (в пунктах) — платим при входе+выходе
             spr = self.spread_points.get(sym, 0.0)
-            pnl -= spr * self.pip_value * pos["quantity"]
+            pnl -= spr * self.pip_value * pos["quantity"] * 0.1  # спред в пт, pip=10×pt
             # комиссия
             pnl -= self.commission_per_lot * pos["quantity"]
             # свопы за ночь
@@ -401,7 +402,8 @@ class Backtester:
         if self.market == "forex":
             sym = pos["symbol"].lower()
             pt = self.point.get(sym, 1e-5)
-            pnl = (price - pos["entry_price"]) / pt * self.pip_value * pos["quantity"]
+            pip = 10 * pt  # pip = 10 × point (AlfaForex)
+            pnl = (price - pos["entry_price"]) / pip * self.pip_value * pos["quantity"]
             if direction == "SHORT":
                 pnl = -pnl
             # накопление свопа (грубо: каждый тик = ночь, только для дневных баров)

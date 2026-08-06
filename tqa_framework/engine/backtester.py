@@ -18,6 +18,7 @@ from __future__ import annotations
 import importlib
 import json
 import logging
+import math
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Callable
 
@@ -54,6 +55,7 @@ class Backtester:
         swap_per_night: Optional[dict] = None,
         detect_every: int = 1,
         save_results: bool = True,
+        end_time: str = "",
     ):
         """Бэктестер.
 
@@ -82,6 +84,7 @@ class Backtester:
         self.market = market
         self.detect_every = detect_every
         self.save_results = save_results
+        self.end_time_override = end_time
         self.point = point or {}
         self.pip_value = pip_value
         self.commission_per_lot = commission_per_lot
@@ -146,7 +149,7 @@ class Backtester:
         _r = _req.get(self.ch_host, params={"query": _q}, timeout=15)
         _r.raise_for_status()
         ch_latest = _r.text.strip()
-        end_time = ch_latest if ch_latest else ""
+        end_time = self.end_time_override if self.end_time_override else (ch_latest if ch_latest else "")
         if end_time:
             logger.info("CH последний бар: %s", end_time)
         else:
@@ -325,7 +328,13 @@ class Backtester:
         sl_pips = max(self.strategy_params.get("sl_pips", 100.0), 10.0)
         if self.market == "forex":
             # Лот от риска: риск $ = equity × risk_pct; SL в пипсах → лот
-            qty = max(0.01, round(equity * risk_pct * risk_mult / (sl_pips * self.pip_value), 2))
+            rp = risk_pct
+            # Dynamic risk: 100% на старте → 75% по мере роста (skill dynamic-risk-sizing)
+            dr = self.strategy_params.get("dynamic_risk", 0.0)
+            if dr > 0 and self.initial_equity > 0:
+                base = risk_pct * 0.75
+                rp = base + (risk_pct - base) * math.exp(-dr * (equity / self.initial_equity - 1))
+            qty = max(0.01, round(equity * rp * risk_mult / (sl_pips * self.pip_value), 2))
         else:
             qty = calc_contracts(equity, risk_pct * risk_mult, signal.price, signal.price)
         if qty <= 0:
@@ -367,7 +376,8 @@ class Backtester:
                 pnl = -pnl
             # спред (в пунктах) — платим при входе+выходе
             spr = self.spread_points.get(sym, 0.0)
-            pnl -= spr * self.pip_value * pos["quantity"] * 0.1  # спред в пт, pip=10×pt
+            # спред: spread_points в $ на лот (Rann: EURUSD 6 = $6/лот round-trip)
+            pnl -= spr * pos["quantity"]
             # комиссия
             pnl -= self.commission_per_lot * pos["quantity"]
             # свопы за ночь

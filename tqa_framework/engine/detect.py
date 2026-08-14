@@ -165,12 +165,22 @@ def load_m1_from_ch(
 
 
 def _parse_ts(ts):
-    """unix или ISO → unix (для day_net маппинга)."""
+    """unix или ISO-строка → unix (для day_net маппинга).
+
+    CH (timezone=Europe/Moscow) отдаёт naive-строки в МСК-часах
+    ("2026-08-14 19:20:00" = 16:20 UTC). naive без tzinfo → интерпретировать
+    как МСК (UTC+3), НЕ как локальное время хоста (иначе сдвиг на TZ-хоста).
+    """
     if isinstance(ts, (int, float)):
         return int(ts)
-    from datetime import datetime
+    from datetime import datetime, timezone, timedelta
     try:
-        return int(datetime.fromisoformat(str(ts).replace("Z", "+00:00")).timestamp())
+        s = str(ts).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            # naive строка из CH = МСК (Europe/Moscow, UTC+3)
+            dt = dt.replace(tzinfo=timezone(timedelta(hours=3)))
+        return int(dt.timestamp())
     except Exception:
         return 0
 

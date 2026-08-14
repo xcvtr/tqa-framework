@@ -379,9 +379,14 @@ class Backtester:
                 rp = base + (risk_pct - base) * math.exp(-dr * (equity / self.initial_equity - 1))
             qty = max(0.01, round(equity * rp * risk_mult / (sl_pips * self.pip_value), 2))
         else:
-            # MOEX: qty = risk×eq/GO (ГО контракта из ticker_cfg['go'])
+            # MOEX: qty = risk×eq/ГО (ГО контракта из ticker_cfg['go'])
+            # sizing_eq_cap: капитал для расчёта лотов ограничен (как в live)
+            eq_for_sizing = equity
+            cap = self.strategy_params.get("sizing_eq_cap", 0)
+            if cap and cap > 0:
+                eq_for_sizing = min(equity, float(cap))
             go_c = self.ticker_go.get(signal.symbol, signal.price)
-            qty = calc_contracts(equity, risk_pct * risk_mult, signal.price, go_c)
+            qty = calc_contracts(eq_for_sizing, risk_pct * risk_mult, signal.price, go_c)
             # Фьючерсы: целые лоты
             qty = max(1, int(qty))
         if qty <= 0:

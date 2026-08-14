@@ -56,6 +56,7 @@ class Backtester:
         detect_every: int = 1,
         save_results: bool = True,
         end_time: str = "",
+        slippage_ticks: int = 0,
     ):
         """Бэктестер.
 
@@ -85,6 +86,7 @@ class Backtester:
         self.detect_every = detect_every
         self.save_results = save_results
         self.end_time_override = end_time
+        self.slippage_ticks = slippage_ticks
         self.point = point or {}
         self.pip_value = pip_value
         self.commission_per_lot = commission_per_lot
@@ -246,11 +248,19 @@ class Backtester:
                     cur_dn = sym_bars[sym][bidx].get('day_net')
                 pos.__dict__['day_net'] = cur_dn
                 pos.__dict__['bar_time'] = bar_time
+                # Прокидываем накопленное состояние позиции (bars_held, peak_fav и т.п.)
+                for k in ('bars_held', 'peak_fav'):
+                    if k in pos_dict:
+                        pos.__dict__[k] = pos_dict[k]
                 try:
                     reason = self._tick_fn(pos, price, self.strategy_params, bar_time)
                 except TypeError:
                     # совместимость: tick с 3 аргументами (FX TOP1 и др.)
                     reason = self._tick_fn(pos, price, self.strategy_params)
+                # Сохраняем состояние обратно в pos_dict (Position пересоздаётся каждый тик)
+                for k in ('bars_held', 'peak_fav'):
+                    if hasattr(pos, k) and k in pos.__dict__:
+                        pos_dict[k] = pos.__dict__[k]
                 if reason != "hold":
                     self._close_position(pos_dict, price, bar_time, reason, all_trades)
 
@@ -378,10 +388,16 @@ class Backtester:
             return None
         # риск в $: qty × SL × pip_value
         risk_amount = qty * sl_pips * self.pip_value
+        # Slippage (MOEX): штраф = slippage_ticks × min_step (в худшую сторону)
+        entry_px = signal.price
+        if self.slippage_ticks > 0:
+            ms_c = self.ticker_ms.get(signal.symbol, 0.01)
+            slip = self.slippage_ticks * ms_c
+            entry_px = entry_px + slip if signal.direction == "LONG" else entry_px - slip
         return {
             "symbol": signal.symbol,
             "direction": signal.direction,
-            "entry_price": signal.price,
+            "entry_price": entry_px,
             "quantity": qty,
             "_risk_amount": risk_amount,
             "entry_time": bar_time,
@@ -393,7 +409,7 @@ class Backtester:
             "closed": False,
             "exit_price": None,
             "exit_time": None,
-            "_last_price": signal.price,
+            "_last_price": entry_px,
             "_entry_dt": bar_time,
             "_swap_acc": 0.0,
             "_day_net": getattr(signal, 'day_net', None),

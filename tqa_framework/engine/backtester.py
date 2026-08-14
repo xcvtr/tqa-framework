@@ -147,11 +147,14 @@ class Backtester:
         self.pg.ensure_schemas()
         self.pg.ensure_tables_backtest()
 
-        # Зафиксировать конец периода — последний бар в CH
+        # Зафиксировать конец периода — последний бар в CH (ИЗ ТОГО ЖЕ ИСТОЧНИКА, что бары!)
         import requests as _req
+        src = getattr(self, 'data_source', 'bars')
         if self.ch_db == "forex":
             _sym0 = self.tickers[0]["symbol"]
             _q = (f"SELECT max(time) FROM forex.bars WHERE symbol='{_sym0}' FORMAT TabSeparated")
+        elif src == "mt5_continuous":
+            _q = f"SELECT max(bt) FROM {self.ch_db}.mt5_continuous FORMAT TabSeparated"
         else:
             _q = f"SELECT max(bt) FROM {self.ch_db}.bars FORMAT TabSeparated"
         _r = _req.get(self.ch_host, params={"query": _q}, timeout=15)
@@ -224,8 +227,21 @@ class Backtester:
                     prices[symbol] = bars[idx]["close"]
 
             # ── 1. Тик: проверка ВСЕХ открытых позиций (по текущим ценам) ──
+            # Ролл контракта: бар с roll_gap=1 — цена сменилась на НОВЫЙ контракт.
+            # Открытые позиции закрываем по ПРЕДЫДУЩЕЙ цене (до гэпа) — ролл не трогает PnL.
             for pos_dict in [p for p in positions if not p.get("closed")]:
                 sym = pos_dict["symbol"]
+                idx_now = sym_idx[sym].get(bar_time)
+                bar_is_roll = False
+                prev_price = None
+                if idx_now is not None and idx_now < len(sym_bars[sym]):
+                    bar_is_roll = bool(sym_bars[sym][idx_now].get("roll_gap"))
+                    if idx_now > 0:
+                        prev_price = sym_bars[sym][idx_now - 1]["close"]
+                if bar_is_roll and prev_price is not None:
+                    # Закрыть по предыдущей цене (без ролл-гэпа)
+                    self._close_position(pos_dict, prev_price, bar_time, "roll_gap", all_trades)
+                    continue
                 price = prices.get(sym)
                 if price is None:
                     continue

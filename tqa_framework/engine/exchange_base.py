@@ -41,6 +41,7 @@ class Signal:
     score: float = 1.0
     confidence: float = 1.0
     reason: str = ""
+    day_net: Optional[float] = None  # для OI: дневной дисбаланс на момент сигнала
 
 
 @dataclass

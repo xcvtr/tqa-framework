@@ -14,9 +14,17 @@ def calc_risk_mult(equity: float) -> float:
 
 def calc_contracts(equity: float, risk_pct: float,
                    price: float, go: float) -> float:
-    """Количество контрактов: min(по риску, по ГО)."""
-    ct_risk = equity * risk_pct / 100 / price
-    ct_go = equity / go if go > 0 else ct_risk
+    """Количество контрактов: min(по риску, по ГО).
+
+    Для MOEX фьючерсов (go = ГО контракта):
+      ct_risk = equity * risk_pct / go        (риск × капитал / ГО)
+      ct_go   = equity / go                   (маржа: весь капитал)
+    risk_pct — доля капитала (0.15 = 15%).
+    """
+    if go <= 0:
+        go = price  # fallback: 1 контракт ≈ цена
+    ct_risk = equity * risk_pct / go
+    ct_go = equity / go
     return min(ct_risk, ct_go)
 
 

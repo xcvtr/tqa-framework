@@ -24,12 +24,15 @@ def load_m1_from_ch(
     host: str = "",
     db: str = "",
     end_time: str = "",
+    source: str = "bars",
 ) -> list[dict]:
     """Загрузить M1 бары из ClickHouse.
 
-    Поддерживает две схемы:
-      - moex:   таблица moex.bars (ticker, bt, opn, hi, lo, prc, vol)
-      - forex:  таблица forex.bars (symbol, time, open, high, low, close, vol)
+    Поддерживает три схемы:
+      - moex:      таблица moex.bars (ticker, bt, opn, hi, lo, prc, vol)
+      - forex:     таблица forex.bars (symbol, time, open, high, low, close, vol)
+      - mt5_continuous: таблица moex.mt5_continuous (ticker, bt, opn, hi, lo, prc, vol)
+        + опционально day_net из moex.futoi (для OI-стратегии)
 
     Args:
         symbol: Тикер (GD, GZ, EURUSD и т.д.)
@@ -37,6 +40,7 @@ def load_m1_from_ch(
         host: CH URL (из CH_URL env или по умолчанию)
         db: БД (moex, forex)
         end_time: Фиксированное окончание (ISO). Если пусто — now()
+        source: 'bars' | 'mt5_continuous' — откуда читать бары
 
     Returns:
         list[dict] с ключами: ts, open, high, low, close, volume
@@ -71,6 +75,8 @@ def load_m1_from_ch(
         """
     else:
         # moex.bars: ticker, bt, opn, hi, lo, prc, vol
+        # или moex.mt5_continuous (source='mt5_continuous') — та же схема колонок
+        tbl = f"{db}.mt5_continuous" if source == "mt5_continuous" else f"{db}.bars"
         query = f"""
         SELECT
             bt as ts,
@@ -79,7 +85,7 @@ def load_m1_from_ch(
             lo as low,
             prc as close,
             vol as volume
-        FROM {db}.bars
+        FROM {tbl}
         WHERE ticker = '{symbol}'
           AND bt >= {end_condition} - INTERVAL {hours} HOUR
           AND bt <= {end_condition}
@@ -107,7 +113,66 @@ def load_m1_from_ch(
             "close": float(row["close"]),
             "volume": float(row.get("volume", 0)),
         })
+
+    # Для OI: подгрузить day_net (дневной дисбаланс физлиц из moex.futoi)
+    # День начинается в 07:00 UTC (граница IRK-дня, как в бэктесте/live).
+    # Присваиваем day_net каждому бару (последний известный на момент бара).
+    if source == "mt5_continuous" and bars:
+        try:
+            import requests as _r
+            daynet_q = f"""
+                SELECT toUnixTimestamp(toDateTime(bt)) ts, buy_fiz, sell_fiz, buy_yur, sell_yur
+                FROM {db}.futoi
+                WHERE ticker = '{symbol}'
+                ORDER BY bt
+                FORMAT JSONEachRow
+            """
+            dn_resp = _r.get(url, params={"query": daynet_q}, timeout=30)
+            dn_resp.raise_for_status()
+            dn_rows = [json.loads(l) for l in dn_resp.text.strip().split("\n") if l.strip()]
+            # day_start = первая запись IRK-дня (07:00 UTC), day_net = (cur-start)/total
+            from collections import defaultdict
+            day_start = {}
+            dn_by_ts = {}
+            for r in dn_rows:
+                ts = int(r["ts"])
+                d = (ts - 7 * 3600) // 86400
+                if d not in day_start:
+                    day_start[d] = int(r["buy_fiz"]) - int(r["sell_fiz"])
+                total = int(r["buy_fiz"]) + int(r["sell_fiz"]) + int(r["buy_yur"]) + int(r["sell_yur"])
+                if total > 0:
+                    dn_by_ts[ts] = (int(r["buy_fiz"]) - int(r["sell_fiz"]) - day_start[d]) / total * 100.0
+
+            # Присвоить каждому бару последний day_net ≤ ts бара
+            dn_ts_sorted = sorted(dn_by_ts.keys())
+            import bisect as _bisect
+            # Ролл-гэп: скачок >3% между соседними M1 = смена контракта ALLFUT.
+            # Помечаем бары после гэпа (roll_gap=1) — detect не должен входить через ролл.
+            prev_close = None
+            for b in bars:
+                bts = _parse_ts(b["ts"])
+                i = _bisect.bisect_right(dn_ts_sorted, bts) - 1
+                if i >= 0:
+                    b["day_net"] = dn_by_ts[dn_ts_sorted[i]]
+                if prev_close and prev_close > 0:
+                    chg = abs(b["close"] / prev_close - 1)
+                    if chg > 0.03:  # ролл-гэп (>3% за 1 мин — контракт сменился)
+                        b["roll_gap"] = 1
+                prev_close = b["close"]
+        except Exception:
+            pass  # day_net опционален — без него OI просто не даст сигнал
     return bars
+
+
+def _parse_ts(ts):
+    """unix или ISO → unix (для day_net маппинга)."""
+    if isinstance(ts, (int, float)):
+        return int(ts)
+    from datetime import datetime
+    try:
+        return int(datetime.fromisoformat(str(ts).replace("Z", "+00:00")).timestamp())
+    except Exception:
+        return 0
 
 
 def resample_bars(bars: list[dict], tf_minutes: int) -> list[dict]:
@@ -153,14 +218,22 @@ def resample_bars(bars: list[dict], tf_minutes: int) -> list[dict]:
 
     for key in sorted(groups):
         chunk = groups[key]
-        result.append({
+        res = {
             "ts": key,
             "open": chunk[0]["open"],
             "high": max(b["high"] for b in chunk),
             "low": min(b["low"] for b in chunk),
             "close": chunk[-1]["close"],
             "volume": sum(b["volume"] for b in chunk),
-        })
+        }
+        # day_net: последний M1 в окне (для OI-стратегии)
+        dn = chunk[-1].get("day_net")
+        if dn is not None:
+            res["day_net"] = dn
+        # roll_gap: если любой бар окна — ролл, помечаем реземпленный
+        if any(b.get("roll_gap") for b in chunk):
+            res["roll_gap"] = 1
+        result.append(res)
 
     return result
 
@@ -169,18 +242,23 @@ def dedup_signals(
     new: list[Signal],
     existing: list[Signal],
     existing_trades: list[dict],
+    include_trades: bool = True,
 ) -> list[Signal]:
     """Dedup: исключить уже торгованные сигналы.
 
     Сравнение по (symbol + direction + price_bucket).
     price_bucket = round(price, 1) — для MOEX фьючерсов.
+
+    include_trades=False — не учитывать закрытые сделки (для OI: сигнал
+    повторяется много раз в год, нужен вход после каждого закрытия).
     """
     seen = set()
     for s in existing:
         seen.add((s.symbol, s.direction, round(s.price, 1)))
-    for t in existing_trades:
-        seen.add((t.get("symbol"), t.get("direction"),
-                  round(t.get("entry_price", 0), 1)))
+    if include_trades:
+        for t in existing_trades:
+            seen.add((t.get("symbol"), t.get("direction"),
+                      round(t.get("entry_price", 0), 1)))
 
     result = []
     for s in new:

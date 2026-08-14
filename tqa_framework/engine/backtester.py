@@ -93,6 +93,12 @@ class Backtester:
 
         self._detect_fn: Optional[Callable] = None
         self._tick_fn: Optional[Callable] = None
+        self.data_source = 'bars'  # 'bars' (moex.bars) | 'mt5_continuous' (наши M1)
+        # ГО контрактов (MOEX): {symbol: go} из ticker_cfg['go']
+        self.ticker_go = {t.get('symbol'): t.get('go', 0) for t in tickers if t.get('go')}
+        # Спецификации MOEX: {symbol: ms/sp} из ticker_cfg (min_step, step_price)
+        self.ticker_ms = {t.get('symbol'): t.get('ms', 0) for t in tickers if t.get('ms')}
+        self.ticker_sp = {t.get('symbol'): t.get('sp', 0) for t in tickers if t.get('sp')}
 
     def _load_strategy(self):
         """Загрузить detect/tick из стратегии через importlib.
@@ -157,6 +163,7 @@ class Backtester:
 
         equity = self.initial_equity
         peak = equity
+        dd = 0.0
         self._realized = 0.0
         all_trades: list[dict] = []
         all_equity: list[dict] = []
@@ -177,6 +184,7 @@ class Backtester:
                 symbol, self.days * 24,
                 self.ch_host, self.ch_db,
                 end_time=end_time,
+                source=getattr(self, 'data_source', 'bars'),
             )
             if not bars:
                 logger.warning("Нет данных для %s", symbol)
@@ -231,7 +239,18 @@ class Backtester:
                     trail_distance=pos_dict.get("trail_distance", 0.0),
                     entry_time=pos_dict.get("entry_time"),
                 )
-                reason = self._tick_fn(pos, price, self.strategy_params)
+                # Прокидываем day_net текущего бара в tick (для OI exit_thr)
+                cur_dn = None
+                bidx = sym_idx[sym].get(bar_time)
+                if bidx is not None and 0 <= bidx < len(sym_bars[sym]):
+                    cur_dn = sym_bars[sym][bidx].get('day_net')
+                pos.__dict__['day_net'] = cur_dn
+                pos.__dict__['bar_time'] = bar_time
+                try:
+                    reason = self._tick_fn(pos, price, self.strategy_params, bar_time)
+                except TypeError:
+                    # совместимость: tick с 3 аргументами (FX TOP1 и др.)
+                    reason = self._tick_fn(pos, price, self.strategy_params)
                 if reason != "hold":
                     self._close_position(pos_dict, price, bar_time, reason, all_trades)
 
@@ -267,7 +286,8 @@ class Backtester:
                         active = [p for p in positions if not p.get("closed")]
                         used_risk = sum(p.get("_risk_amount", 0.0) for p in active)
                         free_equity = max(equity - used_risk, equity * 0.1)
-                        pos = self._open_position(sig, free_equity, sym_rpct[symbol], bar_time)
+                        pos = self._open_position(sig, free_equity, sym_rpct[symbol], bar_time,
+                                                  dd_pct=dd)
                         if pos:
                             positions.append(pos)
 
@@ -321,10 +341,23 @@ class Backtester:
     # --- Внутренние методы ---
 
     def _open_position(
-        self, signal: Signal, equity: float, risk_pct: float, bar_time: str
+        self, signal: Signal, equity: float, risk_pct: float, bar_time: str,
+        dd_pct: float = 0.0,
     ) -> Optional[dict]:
         """Открыть позицию по сигналу."""
         risk_mult = calc_risk_mult(equity)
+        # MOEX: risk_mult=1 (для форекс он душит: 24000/eq → 0.2 при eq>120K)
+        if self.market == 'moex':
+            risk_mult = 1.0
+        # DD-factor: риск снижается при просадке (защита капитала)
+        dd_factor = 1.0
+        if dd_pct > 10:
+            dd_factor = 0.6
+        if dd_pct > 15:
+            dd_factor = 0.4
+        risk_mult *= dd_factor
+        # Новостной буст: score сигнала масштабирует риск (score=2 → риск ×2)
+        risk_mult *= getattr(signal, "score", 1.0)
         sl_pips = max(self.strategy_params.get("sl_pips", 100.0), 10.0)
         if self.market == "forex":
             # Лот от риска: риск $ = equity × risk_pct; SL в пипсах → лот
@@ -336,7 +369,11 @@ class Backtester:
                 rp = base + (risk_pct - base) * math.exp(-dr * (equity / self.initial_equity - 1))
             qty = max(0.01, round(equity * rp * risk_mult / (sl_pips * self.pip_value), 2))
         else:
-            qty = calc_contracts(equity, risk_pct * risk_mult, signal.price, signal.price)
+            # MOEX: qty = risk×eq/GO (ГО контракта из ticker_cfg['go'])
+            go_c = self.ticker_go.get(signal.symbol, signal.price)
+            qty = calc_contracts(equity, risk_pct * risk_mult, signal.price, go_c)
+            # Фьючерсы: целые лоты
+            qty = max(1, int(qty))
         if qty <= 0:
             return None
         # риск в $: qty × SL × pip_value
@@ -359,6 +396,7 @@ class Backtester:
             "_last_price": signal.price,
             "_entry_dt": bar_time,
             "_swap_acc": 0.0,
+            "_day_net": getattr(signal, 'day_net', None),
         }
 
     def _close_position(
@@ -385,8 +423,18 @@ class Backtester:
             pnl_pct = pnl / (pos["entry_price"] * pos["quantity"]) * 100
         else:
             pnl = (price - pos["entry_price"]) * pos["quantity"]
+            # MOEX фьючерсы: pnl = (Δprice / ms) × sp × qty
+            sym = pos["symbol"]
+            ms_c = self.ticker_ms.get(sym)
+            sp_c = self.ticker_sp.get(sym)
+            if ms_c and sp_c and ms_c > 0:
+                pnl = (price - pos["entry_price"]) / ms_c * sp_c * pos["quantity"]
             if direction == "SHORT":
                 pnl = -pnl
+            # Комиссия (MOEX: fee из strategy_params, round-trip)
+            fee = float(self.strategy_params.get('fee_rub', 0.0))
+            if fee > 0:
+                pnl -= fee * 2 * pos["quantity"]
             pnl_pct = pnl / (pos["entry_price"] * pos["quantity"]) * 100
 
         trades.append({
@@ -429,6 +477,12 @@ class Backtester:
             # накопление свопа (грубо: каждый тик = ночь, только для дневных баров)
             return pnl - pos.get("_swap_acc", 0.0)
         pnl = (price - pos["entry_price"]) * pos["quantity"]
+        # MOEX фьючерсы: pnl = (Δprice / ms) × sp × qty (ms=min_step, sp=step_price)
+        sym = pos["symbol"]
+        ms_c = self.ticker_ms.get(sym)
+        sp_c = self.ticker_sp.get(sym)
+        if ms_c and sp_c and ms_c > 0:
+            pnl = (price - pos["entry_price"]) / ms_c * sp_c * pos["quantity"]
         if direction == "SHORT":
             pnl = -pnl
         return pnl

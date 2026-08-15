@@ -75,23 +75,63 @@ def load_m1_from_ch(
         """
     else:
         # moex.bars: ticker, bt, opn, hi, lo, prc, vol
-        # или moex.mt5_continuous (source='mt5_continuous') — та же схема колонок
-        tbl = f"{db}.mt5_continuous" if source == "mt5_continuous" else f"{db}.bars"
-        query = f"""
-        SELECT
-            bt as ts,
-            opn as open,
-            hi as high,
-            lo as low,
-            prc as close,
-            vol as volume
-        FROM {tbl}
-        WHERE ticker = '{symbol}'
-          AND bt >= {end_condition} - INTERVAL {hours} HOUR
-          AND bt <= {end_condition}
-        ORDER BY bt
-        FORMAT JSONEachRow
-        """
+        # moex.mt5_continuous (source='mt5_continuous') — та же схема колонок
+        # moex.mt5_futures D1 (source='mt5_futures_d1') — дневные бары dayofweek (10.0.0.63, МСК)
+        if source == "mt5_continuous":
+            tbl = f"{db}.mt5_continuous"
+        elif source == "mt5_futures_d1":
+            tbl = f"{db}.mt5_futures"
+            query = f"""
+            SELECT
+                bt as ts,
+                opn as open,
+                hi as high,
+                lo as low,
+                prc as close,
+                vol as volume
+            FROM {tbl}
+            WHERE ticker = '{symbol}' AND tf = 'D1'
+              AND bt >= {end_condition} - INTERVAL {hours} HOUR
+              AND bt <= {end_condition}
+            ORDER BY bt
+            FORMAT JSONEachRow
+            """
+        elif source == "mt5_futures_h1":
+            tbl = f"{db}.mt5_futures"
+            # SPYF → SP500 (тикер в mt5_futures); SBRF → SBRF
+            _src_sym = "SP500" if symbol == "SPYF" else symbol
+            query = f"""
+            SELECT
+                bt as ts,
+                opn as open,
+                hi as high,
+                lo as low,
+                prc as close,
+                vol as volume
+            FROM {tbl}
+            WHERE ticker = '{_src_sym}' AND tf = 'H1'
+              AND bt >= {end_condition} - INTERVAL {hours} HOUR
+              AND bt <= {end_condition}
+            ORDER BY bt
+            FORMAT JSONEachRow
+            """
+        else:
+            tbl = f"{db}.bars"
+            query = f"""
+            SELECT
+                bt as ts,
+                opn as open,
+                hi as high,
+                lo as low,
+                prc as close,
+                vol as volume
+            FROM {tbl}
+            WHERE ticker = '{symbol}'
+              AND bt >= {end_condition} - INTERVAL {hours} HOUR
+              AND bt <= {end_condition}
+            ORDER BY bt
+            FORMAT JSONEachRow
+            """
 
     resp = requests.get(
         url,

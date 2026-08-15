@@ -155,6 +155,10 @@ class Backtester:
             _q = (f"SELECT max(time) FROM forex.bars WHERE symbol='{_sym0}' FORMAT TabSeparated")
         elif src == "mt5_continuous":
             _q = f"SELECT max(bt) FROM {self.ch_db}.mt5_continuous FORMAT TabSeparated"
+        elif src == "mt5_futures_d1":
+            _q = f"SELECT max(bt) FROM {self.ch_db}.mt5_futures WHERE tf='D1' FORMAT TabSeparated"
+        elif src == "mt5_futures_h1":
+            _q = f"SELECT max(bt) FROM {self.ch_db}.mt5_futures WHERE tf='H1' FORMAT TabSeparated"
         else:
             _q = f"SELECT max(bt) FROM {self.ch_db}.bars FORMAT TabSeparated"
         _r = _req.get(self.ch_host, params={"query": _q}, timeout=15)
@@ -265,7 +269,7 @@ class Backtester:
                 pos.__dict__['day_net'] = cur_dn
                 pos.__dict__['bar_time'] = bar_time
                 # Прокидываем накопленное состояние позиции (bars_held, peak_fav и т.п.)
-                for k in ('bars_held', 'peak_fav'):
+                for k in ('bars_held', 'peak_fav', 'dow_peak', 'pyra_added'):
                     if k in pos_dict:
                         pos.__dict__[k] = pos_dict[k]
                 try:
@@ -274,7 +278,7 @@ class Backtester:
                     # совместимость: tick с 3 аргументами (FX TOP1 и др.)
                     reason = self._tick_fn(pos, price, self.strategy_params)
                 # Сохраняем состояние обратно в pos_dict (Position пересоздаётся каждый тик)
-                for k in ('bars_held', 'peak_fav'):
+                for k in ('bars_held', 'peak_fav', 'dow_peak', 'pyra_added', 'quantity'):
                     if hasattr(pos, k) and k in pos.__dict__:
                         pos_dict[k] = pos.__dict__[k]
                 if reason != "hold":

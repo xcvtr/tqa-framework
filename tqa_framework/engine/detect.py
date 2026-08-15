@@ -79,6 +79,21 @@ def load_m1_from_ch(
         # moex.mt5_futures D1 (source='mt5_futures_d1') — дневные бары dayofweek (10.0.0.63, МСК)
         if source == "mt5_continuous":
             tbl = f"{db}.mt5_continuous"
+            query = f"""
+            SELECT
+                bt as ts,
+                opn as open,
+                hi as high,
+                lo as low,
+                prc as close,
+                vol as volume
+            FROM {tbl}
+            WHERE ticker = '{symbol}'
+              AND bt >= {end_condition} - INTERVAL {hours} HOUR
+              AND bt <= {end_condition}
+            ORDER BY bt
+            FORMAT JSONEachRow
+            """
         elif source == "mt5_futures_d1":
             tbl = f"{db}.mt5_futures"
             query = f"""

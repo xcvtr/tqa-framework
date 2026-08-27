@@ -215,6 +215,50 @@ class PGState:
             )
             return [dict(r) for r in cur.fetchall()]
 
+    # --- CRUD для strategies (shared.strategies) ---
+
+    def ensure_tables_strategies(self):
+        """Создать таблицу shared.strategies."""
+        with self.conn.cursor() as cur:
+            cur.execute("CREATE SCHEMA IF NOT EXISTS shared")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS shared.strategies (
+                    name TEXT PRIMARY KEY,
+                    version TEXT NOT NULL DEFAULT '2.0',
+                    yaml TEXT NOT NULL,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+
+    def save_strategy(self, name: str, yaml_str: str, version: str = "2.0"):
+        """Сохранить или обновить стратегию в PG."""
+        self.ensure_tables_strategies()
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO shared.strategies (name, version, yaml, updated_at)
+                VALUES (%s, %s, %s, NOW())
+                ON CONFLICT (name) DO UPDATE SET
+                    version = EXCLUDED.version,
+                    yaml = EXCLUDED.yaml,
+                    updated_at = NOW()
+            """, (name, version, yaml_str))
+
+    def load_strategy_yaml(self, name: str) -> str | None:
+        """Загрузить YAML стратегии из PG по имени."""
+        self.ensure_tables_strategies()
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT yaml FROM shared.strategies WHERE name = %s", (name,))
+            row = cur.fetchone()
+            return row[0] if row else None
+
+    def list_strategies(self) -> list[dict]:
+        """Список всех стратегий в PG."""
+        self.ensure_tables_strategies()
+        with self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT name, version, created_at, updated_at FROM shared.strategies ORDER BY name")
+            return [dict(r) for r in cur.fetchall()]
+
     # --- CRUD для live стратегий ---
 
     def ensure_tables_live(self, schema: str):

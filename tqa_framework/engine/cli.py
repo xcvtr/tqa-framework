@@ -37,17 +37,19 @@ def build_parser() -> argparse.ArgumentParser:
     bt.add_argument("--days", type=int, default=365)
     bt.add_argument("--risk-pct", type=float, default=2.0)
     bt.add_argument("--tf", type=int, default=60, help="Detect timeframe (min)")
-    bt.add_argument("--strategy", required=True)
+    bt.add_argument("--strategy", help="Strategy name (Python detect/tick)")
+    bt.add_argument("--strategy-yaml", help="Path to .strategy.yaml (declarative engine)")
     bt.add_argument("--strategy-path", help="Path to strategies/ directory")
-    bt.add_argument("--params", help="JSON params for strategy")
+    bt.add_argument("--params", help="JSON params for strategy; для YAML — {{param}} template vars")
     bt.add_argument("--equity", type=float, default=100_000.0, help="Initial equity")
     bt.add_argument("--max-conc", type=int, default=6, help="Max concurrent positions")
 
     # grid
     gd = sub.add_parser("grid", help="Sweep parameters")
-    gd.add_argument("--strategy", required=True)
+    gd.add_argument("--strategy", help="Strategy name (Python detect/tick)")
+    gd.add_argument("--strategy-yaml", help="Path to .strategy.yaml (declarative engine)")
     gd.add_argument("--strategy-path", help="Path to strategies/ directory")
-    gd.add_argument("--params", required=True, help='JSON: {"param": [values]}')
+    gd.add_argument("--params", required=True, help='JSON: {"param": [values]} или с {{param}} для YAML')
     gd.add_argument("--tickers", default="MM,GZ")
     gd.add_argument("--days", type=int, default=365)
     gd.add_argument("--tf", type=int, default=60)
@@ -72,11 +74,32 @@ def build_parser() -> argparse.ArgumentParser:
     rs.add_argument("--trades", action="store_true", help="Show trades for a run")
     rs.add_argument("--top", action="store_true", help="Show best runs by Calmar")
 
+    # strategy
+    st = sub.add_parser("strategy", help="Manage YAML strategies in PG")
+    st_sub = st.add_subparsers(dest="strategy_action", required=True)
+
+    st_create = st_sub.add_parser("create", help="Upload YAML file to PG")
+    st_create.add_argument("name", help="Strategy name")
+    st_create.add_argument("file", help="Path to .yaml file")
+
+    st_get = st_sub.add_parser("get", help="Show YAML from PG")
+    st_get.add_argument("name", help="Strategy name")
+
+    st_list = st_sub.add_parser("list", help="List all strategies in PG")
+
     return parser
 
 
 def cmd_backtest(args):
     """Запустить бэктест."""
+    # Валидация: --strategy и --strategy-yaml взаимоисключающие
+    if args.strategy and args.strategy_yaml:
+        print("Ошибка: --strategy и --strategy-yaml взаимоисключающие", file=sys.stderr)
+        sys.exit(1)
+    if not args.strategy and not args.strategy_yaml:
+        print("Ошибка: укажите --strategy или --strategy-yaml", file=sys.stderr)
+        sys.exit(1)
+
     from tqa_framework.engine.pg_state import PGState
     from tqa_framework.engine.backtester import Backtester
 
@@ -96,7 +119,7 @@ def cmd_backtest(args):
         days=args.days,
         risk_pct=args.risk_pct,
         tf_minutes=args.tf,
-        strategy_name=args.strategy,
+        strategy_name=args.strategy or "",
         strategy_params=params,
         initial_equity=args.equity,
         pg=pg,
@@ -104,6 +127,7 @@ def cmd_backtest(args):
         ch_db=args.ch_db,
         max_conc=args.max_conc,
         strategy_path=args.strategy_path,
+        strategy_engine_path=args.strategy_yaml or "",
     )
 
     result = bt.run()
@@ -128,6 +152,14 @@ def cmd_backtest(args):
 
 def cmd_grid(args):
     """Запустить sweep параметров."""
+    # Валидация: --strategy и --strategy-yaml взаимоисключающие
+    if args.strategy and args.strategy_yaml:
+        print("Ошибка: --strategy и --strategy-yaml взаимоисключающие", file=sys.stderr)
+        sys.exit(1)
+    if not args.strategy and not args.strategy_yaml:
+        print("Ошибка: укажите --strategy или --strategy-yaml", file=sys.stderr)
+        sys.exit(1)
+
     from tqa_framework.engine.pg_state import PGState
     from tqa_framework.engine.backtester import Backtester
     import itertools
@@ -161,13 +193,14 @@ def cmd_grid(args):
             days=args.days,
             risk_pct=args.risk_pct,
             tf_minutes=args.tf,
-            strategy_name=args.strategy,
+            strategy_name=args.strategy or "",
             strategy_params=params,
             initial_equity=args.equity,
             pg=pg,
             ch_host=args.ch_host,
             ch_db=args.ch_db,
             strategy_path=args.strategy_path,
+            strategy_engine_path=args.strategy_yaml or "",
         )
         result = bt.run()
         calmar = result["summary"]["calmar_ratio"]
@@ -275,6 +308,41 @@ def cmd_results(args):
     print(f"\n  Подробнее: tqa results --id <номер>")
 
 
+def cmd_strategy(args):
+    """Управление стратегиями в PG."""
+    from tqa_framework.engine.pg_state import PGState
+
+    pg = PGState(pg_url=args.pg_url)
+
+    if args.strategy_action == "create":
+        import pathlib
+        yaml_str = pathlib.Path(args.file).read_text()
+        # Валидировать перед сохранением
+        from tqa_framework.strategy_engine.parser import load_strategy_from_string
+        strategy = load_strategy_from_string(yaml_str)
+        pg.save_strategy(args.name, yaml_str, version=strategy.version)
+        print(f"Стратегия '{args.name}' v{strategy.version} сохранена в PG")
+
+    elif args.strategy_action == "get":
+        yaml_str = pg.load_strategy_yaml(args.name)
+        if yaml_str is None:
+            print(f"Стратегия '{args.name}' не найдена в PG", file=sys.stderr)
+            sys.exit(1)
+        print(yaml_str)
+
+    elif args.strategy_action == "list":
+        rows = pg.list_strategies()
+        if not rows:
+            print("Нет стратегий в PG")
+            return
+        print(f"{'Имя':>16} {'Версия':>8} {'Создана':>30} {'Обновлена':>30}")
+        print("-" * 90)
+        for r in rows:
+            print(f"{r['name']:>16} {r['version']:>8} "
+                  f"{r['created_at']:%Y-%m-%d %H:%M:%S} "
+                  f"{r['updated_at']:%Y-%m-%d %H:%M:%S}")
+
+
 def main():
     parser = build_parser()
     args = parser.parse_args()
@@ -287,6 +355,8 @@ def main():
         cmd_paper(args)
     elif args.mode == "results":
         cmd_results(args)
+    elif args.mode == "strategy":
+        cmd_strategy(args)
     else:
         parser.print_help()
         sys.exit(1)

@@ -1,0 +1,47 @@
+# Synthetic Bond strategy for strategy_engine
+# Long/short basis (синт.облигация) на MOEX фьючерсах
+strategy: synthetic_bond
+version: "2.0"
+
+metrics:
+  basis_zscore:
+    type: zscore
+    params: {field: basis, period: 60}
+  basis_norm:
+    type: zscore
+    params: {field: basis, period: 20}
+
+signals:
+  - id: entry_long
+    priority: 9
+    when:
+      all:
+        - "basis_zscore < -2.0"
+        - "hour between [10, 18]"
+    then: open_long
+    params: {max_days: 10}
+
+  - id: entry_short
+    priority: 10
+    when:
+      all:
+        - "basis_zscore > 2.0"
+        - "hour between [10, 18]"
+    then: open_short
+    params: {max_days: 10}
+
+  - id: exit_long
+    priority: 20
+    when:
+      any:
+        - "basis_norm > -0.5"
+        - "bars_held > 10"
+    then: close_long
+
+  - id: exit_short
+    priority: 20
+    when:
+      any:
+        - "basis_norm < 0.5"
+        - "bars_held > 10"
+    then: close_short

@@ -39,7 +39,7 @@ class Backtester:
         days: int,
         risk_pct: float,
         tf_minutes: int,
-        strategy_name: str,
+        strategy_name: str = "",
         strategy_params: Optional[dict] = None,
         initial_equity: float = 100_000.0,
         pg: Optional[PGState] = None,
@@ -47,6 +47,7 @@ class Backtester:
         ch_db: str = "",
         max_conc: int = 6,
         strategy_path: str = "",
+        strategy_engine_path: str = "",  # путь к .strategy.yaml
         market: str = "moex",
         point: Optional[dict] = None,
         pip_value: float = 10.0,
@@ -59,6 +60,9 @@ class Backtester:
         slippage_ticks: int = 0,
     ):
         """Бэктестер.
+
+        strategy_name — имя Python-стратегии (через importlib detect/tick)
+        strategy_engine_path — путь к .strategy.yaml (альтернатива, YAML-declarative)
 
         market='moex'  — pnl = (exit-entry) × quantity (контракты, комиссия 8₽)
         market='forex' — pnl = (exit-entry)/point × pip_value × lot + комиссия + своп
@@ -95,6 +99,8 @@ class Backtester:
 
         self._detect_fn: Optional[Callable] = None
         self._tick_fn: Optional[Callable] = None
+        self.strategy_engine_path = strategy_engine_path
+        self._engine_config = None
         self.data_source = 'bars'  # 'bars' (moex.bars) | 'mt5_continuous' (наши M1)
         # ГО контрактов (MOEX): {symbol: go} из ticker_cfg['go']
         self.ticker_go = {t.get('symbol'): t.get('go', 0) for t in tickers if t.get('go')}
@@ -134,6 +140,99 @@ class Backtester:
             f"Ожидается: strategies/{self.strategy_name}/detect.py и tick.py"
         )
 
+    def _load_strategy_engine(self):
+        """Загрузить strategy_engine из YAML (v2 API).
+
+        Использует parser.load_strategy() и runtime.evaluate().
+        Приоритет: 1) PG (если name найден), 2) файл (если указан путь).
+        """
+        try:
+            from tqa_framework.strategy_engine.parser import load_strategy, load_strategy_from_pg, load_strategy_from_string
+            from tqa_framework.strategy_engine.runtime import evaluate
+        except ImportError as e:
+            logger.warning("strategy_engine не импортирован (%s) — fallback на importlib detect/tick", e)
+            return
+
+        try:
+            path = self.strategy_engine_path
+            if not path:
+                raise ValueError("strategy_engine_path is empty")
+
+            # 1) Попробовать PG (если имя без слешей и расширения .yaml)
+            if "/" not in path and not path.endswith(".yaml"):
+                pg_yaml = self.pg.load_strategy_yaml(path)
+                if pg_yaml:
+                    strategy = load_strategy_from_pg(path, pg_yaml)
+                    logger.info("Strategy Engine загружен из PG: %s", path)
+                else:
+                    raise FileNotFoundError(f"Стратегия '{path}' не найдена ни в PG, ни как файл")
+            else:
+                # 2) Попробовать как путь к файлу
+                strategy = load_strategy(path)
+        except Exception as e:
+            logger.warning("Ошибка загрузки YAML (%s) — fallback на importlib detect/tick", e)
+            return
+
+        self._engine_config = strategy
+        strategy_name = strategy.name
+
+        def engine_detect_fn(bars, config):
+            """Детект через runtime.evaluate — только сигналы с последнего бара."""
+            state = {
+                "symbol": config.get("symbol", "?"),
+                "positions": [],
+                "ts": bars[-1].get("ts", "") if bars else "",
+            }
+            last_ts = bars[-1].get("ts", "") if bars else ""
+            signals = evaluate(bars, strategy, state)
+            result = []
+            from tqa_framework.engine.exchange_base import Signal as BTSignal
+            for sig in signals:
+                if sig.action == "open_long" and sig.timestamp == last_ts:
+                    result.append(BTSignal(
+                        symbol=state["symbol"],
+                        direction="LONG",
+                        price=sig.price,
+                        timestamp=sig.timestamp,
+                        strategy=strategy_name,
+                        score=1.0,
+                    ))
+                elif sig.action == "open_short" and sig.timestamp == last_ts:
+                    result.append(BTSignal(
+                        symbol=state["symbol"],
+                        direction="SHORT",
+                        price=sig.price,
+                        timestamp=sig.timestamp,
+                        strategy=strategy_name,
+                        score=1.0,
+                    ))
+            return result
+
+        def engine_tick_fn(pos, price, config, bar_time=None):
+            """Тик через runtime.evaluate — проверяет close-сигналы."""
+            bar = {"close": price, "ts": bar_time or ""}
+            state = {
+                "symbol": getattr(pos, "symbol", pos.get("symbol", "?")),
+                "positions": [pos] if hasattr(pos, 'direction') else [],
+                "ts": bar_time or "",
+            }
+            # Оценить только последний бар (одиночный бар)
+            sigs = evaluate([bar], strategy, state)
+            for sig in sigs:
+                pos_dir = getattr(pos, "direction", pos.get("direction", ""))
+                if sig.action == "close_all":
+                    return "tp"
+                if sig.action == "close_long" and pos_dir == "LONG":
+                    return "tp"
+                if sig.action == "close_short" and pos_dir == "SHORT":
+                    return "tp"
+            return "hold"
+
+        self._detect_fn = engine_detect_fn
+        self._tick_fn = engine_tick_fn
+        self.strategy_name = strategy_name
+        logger.info("Strategy Engine загружен: %s (%s)", strategy_name, self.strategy_engine_path)
+
     def run(self) -> dict:
         """Запустить бэктест для всех тикеров.
 
@@ -143,7 +242,16 @@ class Backtester:
                 trades — список сделок
                 equity_curve — кривая капитала
         """
-        self._load_strategy()
+        if self.strategy_engine_path:
+            self._load_strategy_engine()
+            if self._engine_config is None:
+                # graceful degradation не удался — ошибка
+                raise RuntimeError(
+                    f"strategy_engine не загрузился: {self.strategy_engine_path}. "
+                    "Убедитесь что файл существует и strategy_engine установлен."
+                )
+        else:
+            self._load_strategy()
         self.pg.ensure_schemas()
         self.pg.ensure_tables_backtest()
 

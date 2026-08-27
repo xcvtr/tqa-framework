@@ -16,9 +16,10 @@ tqa-framework/
 │   ├── exchange_alor.py       ← Live MOEX (Alor API)
 │   ├── exchange_mt5_bridge.py ← Live MT5 (forex/CFD)
 │   ├── pg_state.py            ← PG: connect, CRUD, ensure_tables
+│   ├── strategy_engine/       ← YAML-декларативные стратегии (parser, metrics, actions, runtime)
 │   ├── risk.py                ← common pool, sizing, trend filter
 │   ├── detect.py              ← общий detect (resample, dedup)
-│   └── backtester.py          ← портфельный бэктестер
+│   └── backtester.py          ← портфельный бэктестер (+ --strategy-yaml)
 ├── config/
 │   ├── schema.yaml            ← схема конфига
 │   └── defaults.yaml          ← дефолты
@@ -29,6 +30,7 @@ tqa-framework/
 │   │   ├── detect.py
 │   │   ├── tick.py
 │   │   └── configs/
+│   ├── synthetic_bond/        ← YAML-конфиг для strategy_engine
 │   ├── impulse_return/
 │   ├── stop_hunt/
 │   └── funding_rate_trap/
@@ -148,7 +150,7 @@ def evaluate_position(position: Position, price: float, config: dict) -> str:
 ### Запуск
 
 ```bash
-# Из проекта со стратегиями
+# Из проекта со стратегиями (Python detect/tick)
 python -m tqa_framework.engine.cli \
     --ch-db moex \
     backtest \
@@ -156,6 +158,20 @@ python -m tqa_framework.engine.cli \
     --strategy dragon \
     --strategy-path ~/projects/TQA-MOEX \
     --tf 60 --days 365 --risk-pct 2
+
+# Или через YAML strategy_engine
+python -m tqa_framework.engine.cli \
+    backtest \
+    --tickers Si \
+    --strategy-yaml tqa_framework/strategies/synthetic_bond/config.yaml \
+    --tf 60 --days 30 --risk-pct 0.5 --equity 100000
+
+# Или из PG (если загружена через `tqa strategy create`)
+python -m tqa_framework.engine.cli \
+    backtest \
+    --tickers Si \
+    --strategy-yaml synthetic_bond \
+    --tf 60 --days 30 --risk-pct 0.5 --equity 100000
 ```
 
 ### Просмотр результатов
@@ -181,6 +197,22 @@ cd ~/projects/tqa-framework
 ./docker/pg.sh start     # localhost:5433, изолирован от прода
 ./docker/pg.sh reset     # сбросить данные
 ./docker/pg.sh psql      # psql
+```
+
+### Управление стратегиями в PG
+
+```bash
+# Загрузить YAML стратегию в PG
+tqa strategy create synthetic_bond tqa_framework/strategies/synthetic_bond/config.yaml
+
+# Показать YAML из PG
+tqa strategy get synthetic_bond
+
+# Список всех стратегий в PG
+tqa strategy list
+
+# Init-контейнер: загрузить все .yaml из директории в PG
+python scripts/seed_strategies.py [--dir tqa_framework/strategies]
 ```
 
 Результаты: `backtest.trades`, `backtest.equity_curve`, `backtest.summary`.

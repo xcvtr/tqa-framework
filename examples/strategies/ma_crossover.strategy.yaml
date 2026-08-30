@@ -1,0 +1,55 @@
+# MA Crossover strategy — YAML-версия test_ma (Python detect/tick)
+# Эквивалент: strategies/test_ma/detect.py + tick.py
+strategy: test_ma
+version: "2.0"
+
+params:
+  fast_ma: 5        # период быстрой MA
+  slow_ma: 20       # период медленной MA
+  sl_pct: 0.02      # SL 2%
+  tp_pct: 0.05      # TP 5%
+
+metrics:
+  fast_ma:
+    type: sma
+    params: {field: close, period: 5}
+  slow_ma:
+    type: sma
+    params: {field: close, period: 20}
+  # Быстрая — медленная (положительная = быстрая выше)
+  ma_diff:
+    type: computed
+    params:
+      formula: fast_ma - slow_ma
+
+signals:
+  - id: long
+    priority: 10
+    when: "ma_diff > 0"
+    then: open_long
+    params: {sl_pct: 0.02, tp_pct: 0.05}
+
+  - id: short
+    priority: 20
+    when: "ma_diff < 0"
+    then: open_short
+    params: {sl_pct: 0.02, tp_pct: 0.05}
+
+  - id: close_long
+    priority: 50
+    when: "ma_diff < 0"
+    then: close_long
+
+  - id: close_short
+    priority: 60
+    when: "ma_diff > 0"
+    then: close_short
+
+sweep:
+  enabled: true
+  params:
+    fast_ma: [3, 5, 10, 20]
+    slow_ma: [15, 20, 30, 50]
+    sl_pct:
+      range: [0.01, 0.05, 0.01]
+  max_combinations: 32

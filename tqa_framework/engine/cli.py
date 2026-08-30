@@ -35,7 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     bt = sub.add_parser("backtest", help="Run backtest")
     bt.add_argument("--tickers", required=True, help="Comma-separated tickers")
     bt.add_argument("--days", type=int, default=365)
-    bt.add_argument("--risk-pct", type=float, default=2.0)
+    bt.add_argument("--risk-pct", type=float, default=0.15)
     bt.add_argument("--tf", type=int, default=60, help="Detect timeframe (min)")
     bt.add_argument("--strategy", help="Strategy name (Python detect/tick)")
     bt.add_argument("--strategy-yaml", help="Path to .strategy.yaml (declarative engine)")
@@ -56,7 +56,7 @@ def build_parser() -> argparse.ArgumentParser:
     gd.add_argument("--tickers", default="MM,GZ")
     gd.add_argument("--days", type=int, default=365)
     gd.add_argument("--tf", type=int, default=60)
-    gd.add_argument("--risk-pct", type=float, default=2.0)
+    gd.add_argument("--risk-pct", type=float, default=0.15)
     gd.add_argument("--ch-db", default="moex")
     gd.add_argument("--equity", type=float, default=100_000.0)
 
@@ -107,15 +107,29 @@ def cmd_backtest(args):
 
     pg = PGState(pg_url=args.pg_url)
 
-    tickers = [
-        {"symbol": s.strip(), "tf": args.tf, "risk_pct": args.risk_pct}
-        for s in args.tickers.split(",")
-    ]
-
     params = {}
     if args.params:
         params = json.loads(args.params)
 
+    # ── Загрузка go/ms/sp из PG futures.ticker_specs ──
+    _ticker_list = [s.strip() for s in args.tickers.split(",")]
+    with pg.conn.cursor() as cur:
+        cur.execute(
+            "SELECT ticker, go, min_step, step_price FROM futures.ticker_specs WHERE ticker = ANY(%s)",
+            (_ticker_list,),
+        )
+        _spec_rows = cur.fetchall()
+    _spec_map = {r[0]: {"go": float(r[1]), "ms": float(r[2]), "sp": float(r[3])} for r in _spec_rows}
+
+    tickers = []
+    for s in _ticker_list:
+        t = {"symbol": s, "tf": args.tf, "risk_pct": args.risk_pct}
+        spec = _spec_map.get(s)
+        if spec:
+            t["go"] = spec["go"]
+            t["ms"] = spec["ms"]
+            t["sp"] = spec["sp"]
+        tickers.append(t)
     # ── Загрузка YAML params для специализированных бэктестеров ──
     # Если strategy_yaml=lsr_cross — грузим close/risk params из YAML и
     # используем LsrCrossBacktester (event-driven с 1m hi/lo симуляцией)
@@ -208,10 +222,24 @@ def cmd_grid(args):
     pg = PGState(pg_url=args.pg_url)
     params_grid = json.loads(args.params) if args.params else {}
 
-    tickers = [
-        {"symbol": s.strip(), "tf": args.tf, "risk_pct": args.risk_pct}
-        for s in args.tickers.split(",")
-    ]
+    _ticker_list_grid = [s.strip() for s in args.tickers.split(",")]
+    with pg.conn.cursor() as cur:
+        cur.execute(
+            "SELECT ticker, go, min_step, step_price FROM futures.ticker_specs WHERE ticker = ANY(%s)",
+            (_ticker_list_grid,),
+        )
+        _spec_rows_grid = cur.fetchall()
+    _spec_map_grid = {r[0]: {"go": float(r[1]), "ms": float(r[2]), "sp": float(r[3])} for r in _spec_rows_grid}
+
+    tickers = []
+    for s in _ticker_list_grid:
+        t = {"symbol": s, "tf": args.tf, "risk_pct": args.risk_pct}
+        spec = _spec_map_grid.get(s)
+        if spec:
+            t["go"] = spec["go"]
+            t["ms"] = spec["ms"]
+            t["sp"] = spec["sp"]
+        tickers.append(t)
 
     if args.strategy:
         results = sweep_python(

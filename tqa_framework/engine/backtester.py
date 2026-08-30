@@ -748,7 +748,7 @@ class Backtester:
             "_day_net": getattr(signal, 'day_net', None),
         }
 
-    def load_lsr_data(self, symbol: str, hours: int = 24, end_time: str = ""):
+    def load_lsr_data(self, symbol: str, hours: int = 24, end_time: str = "", z_score_threshold: float = 2.0):
         """Загрузить данные LSR для символа из ClickHouse.
 
         Возвращает список external_signals: [{ts, symbol, direction, zscore, price_at_event}]
@@ -819,9 +819,9 @@ class Backtester:
                 zcurr = zscores[i]
 
                 # Кросс-условия
-                if zprev < 2.0 and zcurr >= 2.0:
+                if zprev < z_score_threshold and zcurr >= z_score_threshold:
                     direction = 'SHORT'
-                elif zprev > -2.0 and zcurr <= -2.0:
+                elif zprev > -z_score_threshold and zcurr <= -z_score_threshold:
                     direction = 'LONG'
                 else:
                     continue

@@ -3,6 +3,8 @@
 ## [004] 2026-08-30
 ### Added
 - YAML bricks: hold timeout, pyramiding trigger/add, risk section loading in universal Backtester
+- `--strategy-yaml lsr_cross` auto-routing → `LsrCrossBacktester` (event-driven 1m hi/lo sim)
+- YAML params merge with `--params` (params override YAML defaults)
 - Checkpoint: checkpoints/004-yaml-bricks-lsr-cross.md
 
 ### Fixed

@@ -116,10 +116,42 @@ def cmd_backtest(args):
     if args.params:
         params = json.loads(args.params)
 
-    # Выбираем бэктестер
-    if args.backtester == "lsr_cross":
+    # ── Загрузка YAML params для специализированных бэктестеров ──
+    # Если strategy_yaml=lsr_cross — грузим close/risk params из YAML и
+    # используем LsrCrossBacktester (event-driven с 1m hi/lo симуляцией)
+    _yaml_strategy = args.strategy_yaml or ""
+    if _yaml_strategy and "/" not in _yaml_strategy and not _yaml_strategy.endswith(".yaml"):
+        _yaml_raw = pg.load_strategy_yaml(_yaml_strategy)
+        if _yaml_raw:
+            import yaml as _yl
+            _yaml_dict = _yl.safe_load(_yaml_raw)
+            if isinstance(_yaml_dict, dict):
+                # Close params
+                _close = _yaml_dict.get("close", {})
+                if isinstance(_close, dict):
+                    for _k, _v in _close.items():
+                        if _k not in params:
+                            params[_k] = _v
+                # Risk params (with mapping)
+                _risk = _yaml_dict.get("risk", {})
+                if isinstance(_risk, dict):
+                    _timeout = _risk.get("exit_timeout_hours")
+                    if _timeout is not None:
+                        params.setdefault("hold_h", _timeout)
+                    _pyr = _risk.get("pyramiding", {})
+                    if isinstance(_pyr, dict):
+                        params.setdefault("pyr_trigger", _pyr.get("trigger", 0.05))
+                        params.setdefault("pyr_add", _pyr.get("add_multiplier", 0.5))
+
+    # ── Выбираем бэктестер ──
+    # Auto-route lsr_cross to specialized backtester (event-driven 1m hi/lo sim)
+    _use_lsr = args.backtester == "lsr_cross" or _yaml_strategy == "lsr_cross"
+    if _use_lsr:
         from tqa_framework.backtesters.lsr_cross import LsrCrossBacktester
         BacktesterClass = LsrCrossBacktester
+        # Устанавливаем strategy_name для PG консистентности
+        if not args.strategy:
+            args.strategy = "lsr_cross"
     else:
         from tqa_framework.engine.backtester import Backtester
         BacktesterClass = Backtester
@@ -137,7 +169,7 @@ def cmd_backtest(args):
         ch_db=args.ch_db,
         max_conc=args.max_conc,
         strategy_path=args.strategy_path,
-        strategy_engine_path=args.strategy_yaml or "",
+        strategy_engine_path=_yaml_strategy,
     )
 
     result = bt.run()

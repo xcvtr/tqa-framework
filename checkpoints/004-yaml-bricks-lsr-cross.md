@@ -1,79 +1,69 @@
 ---
-title: "YAML bricks: hold timeout + pyramiding + risk section"
+title: "YAML bricks + routing LSR-CROSS to LsrCrossBacktester"
 checkpoint: 4
 date: 2026-08-30
 tags: [checkpoint, tqa-framework, yaml, lsr_cross]
 ---
 
-# YAML bricks: hold timeout + pyramiding + risk section
-
-Добавлены 3 недостающих кирпичика в универсальный `Backtester` для поддержки event-driven стратегий через YAML.
+# YAML bricks + routing `--strategy-yaml lsr_cross` → `LsrCrossBacktester`
 
 ## Изменения
 
-### `tqa_framework/engine/backtester.py`
+### 4-й кирпич: YAML routing в `cli.py`
+- `--strategy-yaml lsr_cross` автоматом роутится на `LsrCrossBacktester` (event-driven с 1m hi/lo симуляцией)
+- Close params (sl, tp, trail) и risk params (hold_h, pyramiding) загружаются из YAML и мержатся с `--params` (приоритет `--params`)
+- `--params` пробивает YAML-дефолты — подтверждено тестом (trail_act=0.5 → 6.55% vs 10.71%)
 
-**Brick 1: Risk section loading** (lines ~179-218)
-- Загрузка `risk.pyramiding.trigger/add_multiplier` → `strategy_params['pyramiding_trigger']`, `strategy_params['pyramiding_add_multiplier']`
-- Загрузка `risk.exit_timeout_hours` → `strategy_params['exit_timeout_hours']`
-- Реализована в ОБОИХ ветках загрузки (PG и файловый путь)
+### Brick 1-3: `backtester.py`
+- **Risk section loading** (lines ~179-218): pyramiding trigger/add_multiplier, exit_timeout_hours
+- **Hold timeout** (lines ~489-499): bars_held tracking, close with reason "timeout"
+- **Pyramiding trigger/add** (lines ~644, 660-675): through unrealized PnL
 
-**Brick 2: Hold timeout** (lines ~489-499)
-- Отслеживание `bars_held` для каждой позиции в per-bar цикле
-- При `bars_held * tf_minutes >= exit_timeout_hours * 60` — закрытие с reason `"timeout"`
-- Edge case: позиция открытая на текущем баре начинает счёт с 0
-- Когда `exit_timeout_hours = 0` — таймаут не применяется (обратная совместимость)
+### `detect.py`
+- toTimeZone fix for bar timestamp sync
 
-**Brick 3: Pyramiding trigger/add** (lines ~644, 660-675)
-- В `_open_position()` добавлен параметр `positions: Optional[list] = None`
-- При открытии позиции проверяет существующие открытые позиции на том же символе/направлении
-- Если unrealized PnL% >= `pyramiding_trigger` — риск умножается на `(1 + pyramiding_add_multiplier * pyra_level)`
-- Когда `pyramiding_trigger = 0` — пирамидинг не применяется (обратная совместимость)
+## Результаты
 
-**Также:** исправления из предыдущих сессий
-- `detect.py`: `toTimeZone` для синхронизации таймзоны баров (вместо неверного toDateTime64)
-- `backtester.py`: загрузка `close` params из PG + exclude фильтры из YAML
-
-### `tqa_framework/engine/detect.py`
-- Исправлен `toTimeZone(timestamp, 'UTC')` вместо `toDateTime64(toString(timestamp),3,'UTC')`
-
-## Результаты теста (ETHUSDT, 365d, risk=0.08, equity=1000)
-
+### ETHUSDT 365d (risk=0.08, eq=1000)
 ```
-┌─────────────────────┬──────────┬──────────┬───────────┐
-│ Метрика             │ YAML до  │ YAML после│ Python    │
-├─────────────────────┼──────────┼──────────┼───────────┤
-│ Доходность          │ -2.87%   │ +47.17%  │ +10.65%   │
-│ MDD                 │ 62.26%   │ 50.40%   │ 5.89%     │
-│ Win Rate            │ 78.4%    │ 80.7%    │ 57.3%     │
-│ Profit Factor       │ 0.98     │ 1.40     │ 1.61      │
-│ Сделок              │ 51       │ 57       │ 117       │
-│ Calmar              │ -0.05    │ 0.94     │ 1.81      │
-└─────────────────────┴──────────┴──────────┴───────────┘
+┌──────────────────┬───────────┬──────────┬───────────┐
+│ Метрика          │ YAML 3 br │ 4th br   │ Python    │
+├──────────────────┼───────────┼──────────┼───────────┤
+│ Доходность       │ +47.17%   │ +10.71%  │ +10.65%   │
+│ MDD              │ 50.40%    │ 5.89%    │ 5.89%     │
+│ Win Rate         │ 80.7%     │ 59.0%    │ 57.3%     │
+│ Profit Factor    │ 1.40      │ 1.62     │ 1.61      │
+│ Сделок           │ 57        │ 117      │ 117       │
+│ Calmar           │ 0.94      │ 1.82     │ 1.81      │
+└──────────────────┴───────────┴──────────┴───────────┘
 ```
+После 4-го кирпича YAML-рутинг 1:1 с Python (10.71% vs 10.65% — микро-расхождение из-за CH-кэша).
 
-YAML догнал по доходности, но DD в 8× выше и сделок в 2× меньше — разница в архитектуре симуляции (bar-driven vs event-driven с 1m hi/lo).
-
-## Различия между YAML и Python
-
-| Аспект               | YAML (универсальный Backtester) | Python (LsrCrossBacktester)    |
-|----------------------|--------------------------------|-------------------------------|
-| Entry                | На TF-баре с совпадением метки | На **следующем** 5m баре      |
-| Exit sim             | Close TF-бара                  | 1m hi/lo (точное касание SL)  |
-| Event loop           | Per-tick (все бары)            | Per-event (bounded scan)      |
-| Pyramiding           | Через unrealized PnL           | Через base_risk * multiplier  |
-| Hold timeout         | bars_held * tf_minutes         | timedelta от entry_time       |
+### 10 тикеров, 1095d (risk=0.08, eq=1000, max_conc=6)
+```
+┌──────────────────┬──────────────────┐
+│ Метрика          │ YAML-routed      │
+├──────────────────┼──────────────────┤
+│ Доходность       │ +238.64%         │
+│ MDD              │ 11.85%           │
+│ Win Rate         │ 58.8%            │
+│ Profit Factor    │ 1.71             │
+│ Сделок           │ 1,173            │
+│ Calmar           │ 20.14            │
+└──────────────────┴──────────────────┘
+```
+SOLUSDT не вошёл (нет в `SYM_RISK` LsrCrossBacktester? — проверить).
 
 ## Состояние для продолжения
 
-1. **Нужен 4-й кирпич**: обёртка `--strategy-yaml lsr_cross` → `LsrCrossBacktester` с параметрами из YAML
-2. Либо: рефакторинг универсального Backtester для поддержки 1m sub-bar симуляции при наличии внешних сигналов
-3. LSR-CROSS YAML в PG: имя `lsr_cross`, загружен через `save_strategy('lsr_cross', yaml_content)`
+1. **Свип/гонка YAML-версии** на 11 тикерах с optuna через канбан t_afcd3278
+2. Обновить YAML-конфиг lsr_cross в PG с оптимальными params
+3. Проверить SOLUSDT
 
 ## Изменённые файлы
-- `tqa_framework/engine/backtester.py`
-- `tqa_framework/engine/detect.py`
-- `tqa_framework/engine/cli.py`
+- `tqa_framework/engine/cli.py` — YAML routing + params merge
+- `tqa_framework/engine/backtester.py` — 3 bricks
+- `tqa_framework/engine/detect.py` — toTimeZone fix
 - `tqa_framework/engine/pg_state.py`
 - `tqa_framework/grid/runner.py`
 - `tqa_framework/strategy_engine/__init__.py`

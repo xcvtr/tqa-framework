@@ -31,10 +31,23 @@ def _compute_metric(
     """Resolve and compute a metric by name.
 
     Lookup order:
-      1. Registered metric (built-in or user-registered)
+      1. External signal metric (when name starts with 'external.')
       2. Strategy-defined metric (type + params override)
+      3. Registered metric (built-in or user-registered)
     """
     from tqa_framework.strategy_engine.metrics import get_metric, list_metrics
+
+    # External signal metric: e.g., "external.zscore" accesses state['current_external_signals']
+    if name.startswith("external."):
+        field = name.split(".", 1)[1]
+        current_signals = state.get("current_external_signals", [])
+        if not current_signals:
+            return 0.0
+        # Return value from the first matching external signal
+        for sig in current_signals:
+            if field in sig:
+                return float(sig[field])
+        return 0.0  # Field not present in external signal
 
     # Strategy metrics may override params for a built-in type
     if name in strategy.metrics:
@@ -159,6 +172,8 @@ def evaluate(
     bars: list[dict],
     strategy: StrategyDef,
     state: dict,
+    external_signals: list[dict] | None = None,
+    last_bar_only: bool = False,
 ) -> list[Signal]:
     """Evaluate a strategy over bar data.
 
@@ -166,15 +181,44 @@ def evaluate(
     First matching signal per bar fires its action; remaining signals on that bar skipped.
     State dict is updated in-place after each bar.
 
+    When ``last_bar_only=True``, only processes the LAST bar. This is the primary
+    mode when called from backtester's incremental detect/tick — the backtester
+    already iterates bar by bar, so looping all bars would be O(n²) waste.
+    Metrics still receive the full bar history for lookback (zscore, sma, retrace ...).
+
+    Args:
+        bars: List of OHLCV bar dicts with 'ts', 'open', 'high', 'low', 'close', 'volume'
+        strategy: Parsed StrategyDef
+        state: Mutable state dict (persists across bars, updated in-place)
+        external_signals: Optional list of pre-computed external signal dicts.
+            Each dict should have at least 'ts' (timestamp), 'symbol', and signal data
+            (e.g., 'zscore', 'direction'). These are available in state['external_signals']
+            for metric/condition evaluation.
+        last_bar_only: If True, only evaluate the last bar (default: False).
+
     Returns list of all Signal objects produced across all bars.
     """
     all_signals: list[Signal] = []
 
-    for i in range(len(bars)):
-        current_bars = bars[: i + 1]
+    # Store external signals in state for metric/condition access
+    if external_signals is not None:
+        state["external_signals"] = external_signals
+
+    start = len(bars) - 1 if last_bar_only else 0
+    for i in range(start, len(bars)):
+        current_bars = bars if last_bar_only else bars[: i + 1]
         bar = bars[i]
         ts = bar.get("ts") or bar.get("timestamp", "")
         state["ts"] = ts
+
+        # Filter external signals for current bar timestamp
+        if external_signals:
+            state["current_external_signals"] = [
+                s for s in external_signals
+                if s.get("ts") == ts or str(s.get("timestamp", "")) == str(ts)
+            ]
+        else:
+            state["current_external_signals"] = []
 
         for sig_cfg in strategy.signals:
             eval_params = dict(sig_cfg.params)

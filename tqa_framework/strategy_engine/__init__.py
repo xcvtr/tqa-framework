@@ -28,6 +28,12 @@ from tqa_framework.strategy_engine.models import (
 from tqa_framework.strategy_engine.parser import load_strategy, load_strategy_from_pg, load_strategy_from_string
 from tqa_framework.strategy_engine.runtime import evaluate
 
+# Auto-register MOEX strategy metrics
+try:
+    import tqa_framework.strategy_engine.metrics_moex  # noqa: F401
+except ImportError:
+    pass
+
 __all__ = [
     "register_metric", "get_metric", "list_metrics",
     "register_action", "get_action", "list_actions",

@@ -58,3 +58,20 @@ class Signal:
     timestamp: str
     params: dict = field(default_factory=dict)
     reason: str = ""
+
+
+@dataclass
+class SweepParam:
+    """One sweep parameter definition."""
+    values: list[float] = field(default_factory=list)
+    range_min: Optional[float] = None
+    range_max: Optional[float] = None
+    range_step: Optional[float] = None
+
+
+@dataclass
+class SweepConfig:
+    """Sweep configuration from YAML strategy file."""
+    enabled: bool = True
+    params: dict[str, SweepParam] = field(default_factory=dict)
+    max_combinations: int = 128

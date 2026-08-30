@@ -12,6 +12,8 @@ from tqa_framework.strategy_engine.models import (
     MetricDef,
     SignalConfig,
     StrategyDef,
+    SweepConfig,
+    SweepParam,
 )
 
 PRIORITY_RE = re.compile(r"^([a-z_]+)\s*(<|>|<=|>=|==|!=|between)\s*(.+)$")
@@ -167,3 +169,106 @@ def load_strategy_from_pg(name: str, pg_yaml: str) -> StrategyDef:
     if not isinstance(raw, dict):
         raise ValueError(f"Strategy '{name}' in PG: YAML must be a mapping at top level")
     return _build_strategy(raw)
+
+
+# ── Sweep config ────────────────────────────────────────────────────
+
+
+def load_sweep_config(yaml_path: str) -> SweepConfig:
+    """Parse `sweep:` section from a YAML strategy file → SweepConfig.
+
+    Format:
+        sweep:
+          enabled: true
+          params:
+            z_entry: [1.5, 2.0, 2.5]          # discrete values
+            sl_pct:
+              range: [0.02, 0.05, 0.01]        # [min, max, step]
+          max_combinations: 64
+    """
+    path = Path(yaml_path)
+    raw = yaml.safe_load(path.read_text())
+    sweep_raw = raw.get("sweep", {}) if isinstance(raw, dict) else {}
+    if not sweep_raw:
+        return SweepConfig(enabled=False)
+
+    cfg = SweepConfig(
+        enabled=sweep_raw.get("enabled", True),
+        max_combinations=int(sweep_raw.get("max_combinations", 128)),
+    )
+
+    for p_name, p_def in sweep_raw.get("params", {}).items():
+        if isinstance(p_def, list):
+            # Discrete values: z_entry: [1.5, 2.0, 2.5]
+            cfg.params[p_name] = SweepParam(values=[float(v) for v in p_def])
+        elif isinstance(p_def, dict) and "range" in p_def:
+            # Range: sl_pct: {range: [0.02, 0.05, 0.01]}
+            r = p_def["range"]
+            if len(r) != 3:
+                raise ValueError(f"Sweep param '{p_name}': range must be [min, max, step]")
+            cfg.params[p_name] = SweepParam(
+                range_min=float(r[0]),
+                range_max=float(r[1]),
+                range_step=float(r[2]),
+            )
+        else:
+            raise ValueError(f"Sweep param '{p_name}': expected list or dict with 'range'")
+
+    return cfg
+
+
+def build_sweep_combinations(sweep: SweepConfig) -> list[dict[str, float]]:
+    """Generate all parameter combinations from SweepConfig.
+
+    Expands range params into discrete values, then computes cartesian product.
+    Returns list of dicts, one per combination.
+    """
+    import itertools
+
+    if not sweep.enabled or not sweep.params:
+        return []
+
+    expanded: dict[str, list[float]] = {}
+    for name, sp in sweep.params.items():
+        if sp.values:
+            expanded[name] = sp.values
+        elif sp.range_min is not None and sp.range_max is not None and sp.range_step:
+            vals = []
+            v = sp.range_min
+            while v <= sp.range_max + 1e-9:
+                vals.append(round(v, 6))
+                v += sp.range_step
+            expanded[name] = vals
+        else:
+            expanded[name] = []
+
+    if not expanded:
+        return []
+
+    keys = list(expanded.keys())
+    products = list(itertools.product(*[expanded[k] for k in keys]))
+
+    # Cap at max_combinations
+    if len(products) > sweep.max_combinations:
+        import random
+        random.seed(42)
+        products = random.sample(products, sweep.max_combinations)
+
+    return [dict(zip(keys, combo)) for combo in products]
+
+
+def template_yaml(yaml_str: str, params: dict[str, float]) -> str:
+    """Replace {{param_name}} placeholders in YAML with values from params dict.
+
+    Floats with no fractional part are formatted as ints (10.0 → "10").
+    """
+    import re
+    def _replacer(m):
+        key = m.group(1)
+        if key in params:
+            v = params[key]
+            if isinstance(v, float) and v == int(v):
+                return str(int(v))
+            return str(v)
+        return m.group(0)  # leave untouched if unknown
+    return re.sub(r"\{\{(\w+)\}\}", _replacer, yaml_str)

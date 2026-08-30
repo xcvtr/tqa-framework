@@ -13,3 +13,7 @@ build/
 *.swo
 *~
 *.log
+.coverage
+debug_*.py
+results/
+docs/examples/

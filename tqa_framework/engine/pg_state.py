@@ -22,10 +22,13 @@ def _pg_url() -> str:
 
 
 def _parse_url(url: str) -> dict:
-    """Разобрать postgresql://user:pass@host:port/dbname."""
+    """Разобрать postgresql://user:***@host:port/dbname."""
     rest = url.removeprefix("postgresql://")
     user_pass, rest = rest.split("@", 1)
-    user, password = user_pass.split(":", 1)
+    if ":" in user_pass:
+        user, password = user_pass.split(":", 1)
+    else:
+        user, password = user_pass, ""
     host_port, dbname = rest.split("/", 1)
     if ":" in host_port:
         host, port = host_port.split(":", 1)
@@ -130,6 +133,8 @@ class PGState:
 
     def save_trade(self, trade: dict):
         """Сохранить закрытую сделку в backtest.trades."""
+        if isinstance(trade.get("tags"), dict):
+            trade["tags"] = json.dumps(trade["tags"])
         with self.conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO backtest.trades
@@ -148,6 +153,10 @@ class PGState:
         """Сохранить список сделок батчем."""
         if not trades:
             return
+        # Auto-convert tags dict → JSON string
+        for trade in trades:
+            if isinstance(trade.get("tags"), dict):
+                trade["tags"] = json.dumps(trade["tags"])
         with self.conn.cursor() as cur:
             psycopg2.extras.execute_values(
                 cur,

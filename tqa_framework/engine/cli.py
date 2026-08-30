@@ -43,13 +43,16 @@ def build_parser() -> argparse.ArgumentParser:
     bt.add_argument("--params", help="JSON params for strategy; для YAML — {{param}} template vars")
     bt.add_argument("--equity", type=float, default=100_000.0, help="Initial equity")
     bt.add_argument("--max-conc", type=int, default=6, help="Max concurrent positions")
+    bt.add_argument("--backtester", default="default",
+                    choices=["default", "lsr_cross"],
+                    help="Backtester implementation: 'default' (universal) or 'lsr_cross' (specialized)")
 
     # grid
     gd = sub.add_parser("grid", help="Sweep parameters")
     gd.add_argument("--strategy", help="Strategy name (Python detect/tick)")
     gd.add_argument("--strategy-yaml", help="Path to .strategy.yaml (declarative engine)")
     gd.add_argument("--strategy-path", help="Path to strategies/ directory")
-    gd.add_argument("--params", required=True, help='JSON: {"param": [values]} или с {{param}} для YAML')
+    gd.add_argument("--params", help='JSON: {"param": [values]} — для YAML опционально, если sweep секция в YAML')
     gd.add_argument("--tickers", default="MM,GZ")
     gd.add_argument("--days", type=int, default=365)
     gd.add_argument("--tf", type=int, default=60)
@@ -101,7 +104,6 @@ def cmd_backtest(args):
         sys.exit(1)
 
     from tqa_framework.engine.pg_state import PGState
-    from tqa_framework.engine.backtester import Backtester
 
     pg = PGState(pg_url=args.pg_url)
 
@@ -114,7 +116,15 @@ def cmd_backtest(args):
     if args.params:
         params = json.loads(args.params)
 
-    bt = Backtester(
+    # Выбираем бэктестер
+    if args.backtester == "lsr_cross":
+        from tqa_framework.backtesters.lsr_cross import LsrCrossBacktester
+        BacktesterClass = LsrCrossBacktester
+    else:
+        from tqa_framework.engine.backtester import Backtester
+        BacktesterClass = Backtester
+
+    bt = BacktesterClass(
         tickers=tickers,
         days=args.days,
         risk_pct=args.risk_pct,
@@ -161,58 +171,45 @@ def cmd_grid(args):
         sys.exit(1)
 
     from tqa_framework.engine.pg_state import PGState
-    from tqa_framework.engine.backtester import Backtester
-    import itertools
+    from tqa_framework.grid.runner import sweep_python, sweep_yaml, print_results
 
     pg = PGState(pg_url=args.pg_url)
-    params_grid = json.loads(args.params)
+    params_grid = json.loads(args.params) if args.params else {}
 
     tickers = [
         {"symbol": s.strip(), "tf": args.tf, "risk_pct": args.risk_pct}
         for s in args.tickers.split(",")
     ]
 
-    keys = list(params_grid.keys())
-    values_list = list(params_grid.values())
-
-    best = {"calmar": -999, "params": {}}
-    total = 1
-    for v in values_list:
-        total *= len(v)
-
-    print(f"Grid sweep: {total} комбинаций по {args.strategy}")
-    print(f"  keys={keys}")
-    print()
-
-    for idx, combo in enumerate(itertools.product(*values_list)):
-        params = dict(zip(keys, combo))
-        print(f"  [{idx+1}/{total}] {params}", end="")
-
-        bt = Backtester(
+    if args.strategy:
+        results = sweep_python(
+            pg=pg,
             tickers=tickers,
             days=args.days,
             risk_pct=args.risk_pct,
             tf_minutes=args.tf,
-            strategy_name=args.strategy or "",
-            strategy_params=params,
+            strategy_name=args.strategy,
+            strategy_path=args.strategy_path or "",
+            params_grid=params_grid,
             initial_equity=args.equity,
-            pg=pg,
             ch_host=args.ch_host,
             ch_db=args.ch_db,
-            strategy_path=args.strategy_path,
-            strategy_engine_path=args.strategy_yaml or "",
         )
-        result = bt.run()
-        calmar = result["summary"]["calmar_ratio"]
-        print(f" → Calmar={calmar:.2f}")
+    else:
+        results = sweep_yaml(
+            pg=pg,
+            tickers=tickers,
+            days=args.days,
+            risk_pct=args.risk_pct,
+            tf_minutes=args.tf,
+            yaml_path=args.strategy_yaml,
+            initial_equity=args.equity,
+            ch_host=args.ch_host,
+            ch_db=args.ch_db,
+            sweep_override=params_grid if params_grid else None,
+        )
 
-        if calmar > best["calmar"]:
-            best = {"calmar": calmar, "params": params}
-
-    print("\n" + "=" * 60)
-    print(f"  Лучшая комбинация: {best['params']}")
-    print(f"  Calmar:            {best['calmar']:.2f}")
-    print("=" * 60)
+    print_results(results)
 
 
 def cmd_paper(args):

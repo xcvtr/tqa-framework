@@ -1,0 +1,84 @@
+# LSR Cross Strategy - External LSR Z-Score Trading
+# Based on Python implementation in TQA-Crypto engine
+
+strategy: lsr_cross
+version: "2.0"
+
+# Metrics used by the strategy
+metrics:
+  zscore:
+    type: zscore
+    params: {field: ratio, period: 30}
+  basis_zscore:
+    type: zscore
+    params: {field: basis, period: 60}
+  basis_norm:
+    type: zscore
+    params: {field: basis, period: 20}
+
+# Signals - LSR z-score crossing events
+signals:
+  - id: z_cross_short
+    priority: 10
+    when:
+      all:
+        - "external.zscore > 2.0"
+        - "external.zprev <= 2.0"
+    then: open_short
+    params: {max_days: 10}
+  - id: z_cross_long
+    priority: 9
+    when:
+      all:
+        - "external.zscore < -2.0"
+        - "external.zprev >= -2.0"
+    then: open_long
+    params: {max_days: 10}
+
+# Close/Exit configuration
+close:
+  sl_pct: 0.05      # 5% стоп-лосс
+  tp_pct: 0.18      # 18% тейк-профит
+  trail_act: 0.04   # Трейлинг активация после +4%
+  trail_dist: 0.03  # Трейлинг отступ 3%
+  trail_lock: 0.02  # Фиксация минимум 2% профита
+
+# Exclude filters (matching Python lsrcross.py: EXCLUDE_HOURS={22,23}, EXCLUDE_DOW=set())
+exclude:
+  symbols: ["SOLUSDT"]     # exclude SOLUSDT
+  hours: [22, 23]          # exclude hours 22, 23 (UTC)
+  dow: []                  # no DOW filter
+
+# Sweep configuration for parameter variations
+sweep:
+  enabled: true
+  params:
+    z_entry: [1.5, 2.0, 2.5]
+    sl_pct:
+      range: [0.02, 0.05, 0.01]
+    traildist:
+      range: [0.01, 0.02, 0.01]
+  max_combinations: 32
+
+# Risk Management
+risk:
+  pyramiding:
+    trigger: 0.05  # +5% move triggers pyramiding
+    add_multiplier: 0.5  # add 0.5x position
+  max_pos_per_sym: 6
+  per_symbol_risk: 0.30  # risk percentage per symbol
+  exit_timeout_hours: 120
+
+# Data Sources - External LSR from ClickHouse
+# Host: 10.0.0.60:8123, Database: crypto, Table: long_short_ratio
+
+data_sources:
+  - name: lsr_external
+    type: external
+    source:
+      host: "10.0.0.60"
+      port: 8123
+      database: "crypto"
+      table: "long_short_ratio"
+    interval: "5m"
+    refresh_interval_minutes: 60

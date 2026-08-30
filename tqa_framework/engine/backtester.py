@@ -79,6 +79,12 @@ class Backtester:
         self.tf_minutes = tf_minutes
         self.strategy_name = strategy_name
         self.strategy_params = strategy_params or {}
+        self._raw_yaml = None  # raw YAML dict (заполняется при загрузке через strategy_engine)
+        # data_source ДО for-loop — чтобы --params мог переопределить
+        self.data_source = self.strategy_params.get('data_source', 'bars')  # 'bars' | 'mt5_continuous'
+        # Apply all strategy_params keys as attributes (для LSR-CROSS и др.)
+        for k, v in self.strategy_params.items():
+            setattr(self, k, v)
         self.pyramid_max = self.strategy_params.get("pyramid_max", 1)
         self.strategy_path = strategy_path
         self.initial_equity = initial_equity
@@ -101,7 +107,6 @@ class Backtester:
         self._tick_fn: Optional[Callable] = None
         self.strategy_engine_path = strategy_engine_path
         self._engine_config = None
-        self.data_source = 'bars'  # 'bars' (moex.bars) | 'mt5_continuous' (наши M1)
         # ГО контрактов (MOEX): {symbol: go} из ticker_cfg['go']
         self.ticker_go = {t.get('symbol'): t.get('go', 0) for t in tickers if t.get('go')}
         # Спецификации MOEX: {symbol: ms/sp} из ticker_cfg (min_step, step_price)
@@ -164,11 +169,51 @@ class Backtester:
                 if pg_yaml:
                     strategy = load_strategy_from_pg(path, pg_yaml)
                     logger.info("Strategy Engine загружен из PG: %s", path)
+                    # Load close params + raw YAML from PG string too
+                    import yaml as _yaml
+                    self._raw_yaml = _yaml.safe_load(pg_yaml)
+                    if isinstance(self._raw_yaml, dict) and 'close' in self._raw_yaml:
+                        for _k, _v in self._raw_yaml['close'].items():
+                            if _k not in self.strategy_params:
+                                self.strategy_params[_k] = _v
+                    # NEW: Load risk section (pyramiding, exit_timeout_hours)
+                    if isinstance(self._raw_yaml, dict) and 'risk' in self._raw_yaml:
+                        _risk = self._raw_yaml['risk']
+                        # Flatten top-level risk keys (exit_timeout_hours, per_symbol_risk, etc.)
+                        for _k, _v in _risk.items():
+                            if _k not in self.strategy_params and not isinstance(_v, dict):
+                                self.strategy_params[_k] = _v
+                        # Flatten pyramiding sub-keys
+                        if 'pyramiding' in _risk and isinstance(_risk['pyramiding'], dict):
+                            for _pk, _pv in _risk['pyramiding'].items():
+                                _pk_full = f"pyramiding_{_pk}"  # → pyramiding_trigger, pyramiding_add_multiplier
+                                if _pk_full not in self.strategy_params:
+                                    self.strategy_params[_pk_full] = _pv
                 else:
                     raise FileNotFoundError(f"Стратегия '{path}' не найдена ни в PG, ни как файл")
             else:
                 # 2) Попробовать как путь к файлу
                 strategy = load_strategy(path)
+                # Also load close params from raw YAML
+                import yaml as _yaml
+                self._raw_yaml = _yaml.safe_load(open(path))
+                if isinstance(self._raw_yaml, dict) and 'close' in self._raw_yaml:
+                    for _k, _v in self._raw_yaml['close'].items():
+                        if _k not in self.strategy_params:
+                            self.strategy_params[_k] = _v
+                # NEW: Load risk section (pyramiding, exit_timeout_hours)
+                if isinstance(self._raw_yaml, dict) and 'risk' in self._raw_yaml:
+                    _risk = self._raw_yaml['risk']
+                    # Flatten top-level risk keys (exit_timeout_hours, per_symbol_risk, etc.)
+                    for _k, _v in _risk.items():
+                        if _k not in self.strategy_params and not isinstance(_v, dict):
+                            self.strategy_params[_k] = _v
+                    # Flatten pyramiding sub-keys
+                    if 'pyramiding' in _risk and isinstance(_risk['pyramiding'], dict):
+                        for _pk, _pv in _risk['pyramiding'].items():
+                            _pk_full = f"pyramiding_{_pk}"  # → pyramiding_trigger, pyramiding_add_multiplier
+                            if _pk_full not in self.strategy_params:
+                                self.strategy_params[_pk_full] = _pv
         except Exception as e:
             logger.warning("Ошибка загрузки YAML (%s) — fallback на importlib detect/tick", e)
             return
@@ -184,7 +229,10 @@ class Backtester:
                 "ts": bars[-1].get("ts", "") if bars else "",
             }
             last_ts = bars[-1].get("ts", "") if bars else ""
-            signals = evaluate(bars, strategy, state)
+            symbol = config.get("symbol", "?")
+            ext_idx = getattr(self, 'sym_ext_idx', {})
+            current_ext_signals = ext_idx.get(symbol, {}).get(last_ts, [])
+            signals = evaluate(bars, strategy, state, external_signals=current_ext_signals, last_bar_only=True)
             result = []
             from tqa_framework.engine.exchange_base import Signal as BTSignal
             for sig in signals:
@@ -209,17 +257,26 @@ class Backtester:
             return result
 
         def engine_tick_fn(pos, price, config, bar_time=None):
-            """Тик через runtime.evaluate — проверяет close-сигналы."""
-            bar = {"close": price, "ts": bar_time or ""}
+            """Тик через runtime.evaluate — проверяет close-сигналы.
+            
+            Использует полное окно баров символа из sym_bars/sym_idx,
+            чтобы exit-условия (zscore, bars_held, sma) работали корректно.
+            """
+            sym = getattr(pos, "symbol", "?")
+            bars = getattr(self, 'sym_bars', {}).get(sym, [])
+            idx = getattr(self, 'sym_idx', {}).get(sym, {}).get(bar_time)
+            if idx is not None and idx < len(bars):
+                window = bars[:idx + 1]
+            else:
+                window = [{"close": price, "ts": bar_time or ""}]
             state = {
-                "symbol": getattr(pos, "symbol", pos.get("symbol", "?")),
+                "symbol": sym,
                 "positions": [pos] if hasattr(pos, 'direction') else [],
                 "ts": bar_time or "",
             }
-            # Оценить только последний бар (одиночный бар)
-            sigs = evaluate([bar], strategy, state)
+            sigs = evaluate(window, strategy, state, last_bar_only=True)
             for sig in sigs:
-                pos_dir = getattr(pos, "direction", pos.get("direction", ""))
+                pos_dir = getattr(pos, "direction", "")
                 if sig.action == "close_all":
                     return "tp"
                 if sig.action == "close_long" and pos_dir == "LONG":
@@ -261,6 +318,9 @@ class Backtester:
         if self.ch_db == "forex":
             _sym0 = self.tickers[0]["symbol"]
             _q = (f"SELECT max(time) FROM forex.bars WHERE symbol='{_sym0}' FORMAT TabSeparated")
+        elif self.ch_db == "crypto":
+            _sym0 = self.tickers[0]["symbol"]
+            _q = f"SELECT max(timestamp) FROM crypto.klines WHERE symbol='{_sym0}' AND interval='5m' FORMAT TabSeparated"
         elif src == "mt5_continuous":
             _q = f"SELECT max(bt) FROM {self.ch_db}.mt5_continuous FORMAT TabSeparated"
         elif src == "mt5_futures_d1":
@@ -316,12 +376,96 @@ class Backtester:
             logger.error("Нет данных ни по одному символу")
             return {"summary": {}, "trades": [], "equity_curve": []}
 
+        # Загрузить внешние LSR сигналы
+        all_external_signals = []
+        if self.ch_db == "crypto":
+            for symbol in sym_bars.keys():
+                # +720h warmup для z-score rolling window (как в Python lsr_cross.py)
+                signals = self.load_lsr_data(symbol, hours=self.days * 24 + 720, end_time=end_time)
+                if signals:
+                    all_external_signals.extend(signals)
+                    logger.info(f"Загружено {len(signals)} LSR сигналов для {symbol}")
+
+        # ── REMAP: LSR event timestamps → next 5m bar timestamp ──
+        # Python simulate_trade() uses np.searchsorted(px_t5, ev_ts, side='right')
+        # to find the FIRST 5m bar AFTER each LSR cross event.
+        # YAML engine_detect_fn needs external signal ts to match a bar ts.
+        # CRITICAL: normalize timestamps to same format — resample_bars uses 'T'
+        # format (2026-08-06T00:00:00), but LSR event timestamps use space
+        # format (2026-08-06 00:00:00.000). String comparison treats 'T' > ' ',
+        # causing ALL signals on a day to map to the midnight bar. Fix: normalize.
+        import bisect
+        for sig in all_external_signals:
+            sym = sig.get("symbol")
+            ts = sig.get("ts")
+            if sym and ts and sym in sym_bars:
+                bar_times = [b["ts"] for b in sym_bars[sym]]
+                # Normalize to 'T' format AND strip millis for consistent string comparison
+                # LSR: "2026-08-06 12:35:00.000" → "2026-08-06T12:35:00.000" → "2026-08-06T12:35:00"
+                ts_norm = ts.replace(" ", "T")
+                if "." in ts_norm:
+                    ts_norm = ts_norm.split(".")[0]
+                idx = bisect.bisect_right(bar_times, ts_norm)
+                if idx < len(bar_times):
+                    sig["ts"] = bar_times[idx]
+                    sig["timestamp"] = bar_times[idx]
+
+        # ── Apply exclude hours/DOW from YAML ──
+        if self._engine_config and self.strategy_engine_path:
+            try:
+                import yaml as _yl
+                if getattr(self, '_raw_yaml', None):
+                    _raw_yaml = self._raw_yaml
+                else:
+                    with open(self.strategy_engine_path) as _f:
+                        _raw_yaml = _yl.safe_load(_f)
+                _excl = _raw_yaml.get("exclude", {})
+                _excl_hours = set(_excl.get("hours", []))
+                _excl_dow = set(_excl.get("dow", []))
+                if _excl_hours or _excl_dow:
+                    _before = len(all_external_signals)
+                    _filtered = []
+                    for _sig in all_external_signals:
+                        _ts = _sig.get("ts", "")
+                        try:
+                            from datetime import datetime as _dt
+                            _d = _dt.fromisoformat(_ts.replace("T", " ").split(".")[0])
+                            if _d.hour in _excl_hours:
+                                continue
+                            if _d.weekday() in _excl_dow:
+                                continue
+                        except (ValueError, AttributeError):
+                            pass
+                        _filtered.append(_sig)
+                    all_external_signals = _filtered
+                    logger.info("Exclude hours=%s DOW=%s: %d → %d сигналов",
+                                _excl_hours, _excl_dow, _before, len(all_external_signals))
+            except Exception as _ex:
+                logger.warning("Не удалось применить exclude фильтры из YAML: %s", _ex)
+
+        # Индекс сигналов по времени
+        sym_ext_idx = {}
+        for sig in all_external_signals:
+            sym = sig.get("symbol")
+            ts = sig.get("ts")
+            if sym and ts:
+                if sym not in sym_ext_idx:
+                    sym_ext_idx[sym] = {}
+                if ts not in sym_ext_idx[sym]:
+                    sym_ext_idx[sym][ts] = []
+                sym_ext_idx[sym][ts].append(sig)
+
+        self.sym_ext_idx = sym_ext_idx
+        self.sym_bars = sym_bars
+
         # Общий временной индекс: union всех bar_time (отсортированный)
         all_times = sorted({b["ts"] for bars in sym_bars.values() for b in bars})
         # индекс бара по времени для каждого символа
         sym_idx = {}
         for symbol, bars in sym_bars.items():
             sym_idx[symbol] = {b["ts"]: i for i, b in enumerate(bars)}
+
+        self.sym_idx = sym_idx
 
         detect_lookback = getattr(self, "detect_lookback", 600)
         _last_prog = 0
@@ -341,8 +485,16 @@ class Backtester:
             # ── 1. Тик: проверка ВСЕХ открытых позиций (по текущим ценам) ──
             # Ролл контракта: бар с roll_gap=1 — цена сменилась на НОВЫЙ контракт.
             # Открытые позиции закрываем по ПРЕДЫДУЩЕЙ цене (до гэпа) — ролл не трогает PnL.
+            # NEW: Hold timeout check
+            _timeout_hours = getattr(self, 'exit_timeout_hours', 0) or self.strategy_params.get('exit_timeout_hours', 0)
             for pos_dict in [p for p in positions if not p.get("closed")]:
                 sym = pos_dict["symbol"]
+                price = prices.get(sym)
+                # Track bars held for timeout check
+                pos_dict['bars_held'] = pos_dict.get('bars_held', 0) + 1
+                if _timeout_hours > 0 and price is not None and pos_dict['bars_held'] * self.tf_minutes >= _timeout_hours * 60:
+                    self._close_position(pos_dict, price, bar_time, "timeout", all_trades)
+                    continue
                 idx_now = sym_idx[sym].get(bar_time)
                 bar_is_roll = False
                 prev_price = None
@@ -385,6 +537,11 @@ class Backtester:
                 except TypeError:
                     # совместимость: tick с 3 аргументами (FX TOP1 и др.)
                     reason = self._tick_fn(pos, price, self.strategy_params)
+
+                # ── SL/TP/Trail check (из YAML close params) ──
+                if reason == "hold":
+                    reason = self._check_sl_tp_trail(pos_dict, price)
+
                 # Сохраняем состояние обратно в pos_dict (Position пересоздаётся каждый тик)
                 for k in ('bars_held', 'peak_fav', 'dow_peak', 'pyra_added', 'quantity'):
                     if hasattr(pos, k) and k in pos.__dict__:
@@ -397,6 +554,10 @@ class Backtester:
                 for symbol, bars in sym_bars.items():
                     idx = sym_idx[symbol].get(bar_time)
                     if idx is None or idx < 10:
+                        continue
+                    # Fast-path: skip if no external signals for this symbol·bar
+                    ext_sigs_at_bar = getattr(self, 'sym_ext_idx', {}).get(symbol, {}).get(bar_time, [])
+                    if not ext_sigs_at_bar and getattr(self, 'sym_ext_idx', {}):
                         continue
                     window = bars[max(0, idx - detect_lookback + 1):idx + 1]
                     signals = self._detect_fn(window, {
@@ -425,7 +586,7 @@ class Backtester:
                         used_risk = sum(p.get("_risk_amount", 0.0) for p in active)
                         free_equity = max(equity - used_risk, equity * 0.1)
                         pos = self._open_position(sig, free_equity, sym_rpct[symbol], bar_time,
-                                                  dd_pct=dd)
+                                                  dd_pct=dd, positions=positions)
                         if pos:
                             positions.append(pos)
 
@@ -480,7 +641,7 @@ class Backtester:
 
     def _open_position(
         self, signal: Signal, equity: float, risk_pct: float, bar_time: str,
-        dd_pct: float = 0.0,
+        dd_pct: float = 0.0, positions: Optional[list] = None,
     ) -> Optional[dict]:
         """Открыть позицию по сигналу."""
         risk_mult = calc_risk_mult(equity)
@@ -496,6 +657,22 @@ class Backtester:
         risk_mult *= dd_factor
         # Новостной буст: score сигнала масштабирует риск (score=2 → риск ×2)
         risk_mult *= getattr(signal, "score", 1.0)
+        # NEW: Pyramiding by unrealized PnL
+        _pyr_trigger = self.strategy_params.get('pyramiding_trigger', 0.0)
+        _pyr_add = self.strategy_params.get('pyramiding_add_multiplier', 0.0)
+        _pyra_level = 0
+        if _pyr_trigger > 0 and _pyr_add > 0 and positions:
+            for _p in positions:
+                if not _p.get('closed') and _p['symbol'] == signal.symbol and _p['direction'] == signal.direction:
+                    _entry = _p['entry_price']
+                    _cur = _p.get('_last_price', _entry)
+                    _pnl_pct = (_cur - _entry) / _entry if _entry else 0.0
+                    if signal.direction == 'SHORT':
+                        _pnl_pct = -_pnl_pct
+                    if _pnl_pct >= _pyr_trigger:
+                        _pyra_level += 1
+            if _pyra_level > 0:
+                risk_mult *= (1.0 + _pyr_add * _pyra_level)
         sl_pips = max(self.strategy_params.get("sl_pips", 100.0), 10.0)
         if self.market == "forex":
             # Лот от риска: риск $ = equity × risk_pct; SL в пипсах → лот
@@ -527,6 +704,27 @@ class Backtester:
             ms_c = self.ticker_ms.get(signal.symbol, 0.01)
             slip = self.slippage_ticks * ms_c
             entry_px = entry_px + slip if signal.direction == "LONG" else entry_px - slip
+
+        # YAML close params (sl_pct, tp_pct, trail_act, trail_dist, trail_lock)
+        sl_pct = self.strategy_params.get("sl_pct")
+        tp_pct = self.strategy_params.get("tp_pct")
+        if sl_pct is not None and signal.direction == "LONG":
+            sl_price = entry_px * (1.0 - float(sl_pct))
+        elif sl_pct is not None:
+            sl_price = entry_px * (1.0 + float(sl_pct))
+        else:
+            sl_price = None
+        if tp_pct is not None and signal.direction == "LONG":
+            tp_price = entry_px * (1.0 + float(tp_pct))
+        elif tp_pct is not None:
+            tp_price = entry_px * (1.0 - float(tp_pct))
+        else:
+            tp_price = None
+        trail_act = self.strategy_params.get("trail_act")
+        trail_dist = self.strategy_params.get("trail_dist", 0.0)
+        trail_lock = self.strategy_params.get("trail_lock", 0.0)
+        trail_activation_px = (entry_px * (1.0 + float(trail_act))) if trail_act is not None else None
+
         return {
             "symbol": signal.symbol,
             "direction": signal.direction,
@@ -534,10 +732,12 @@ class Backtester:
             "quantity": qty,
             "_risk_amount": risk_amount,
             "entry_time": bar_time,
-            "sl_price": None,
-            "tp_price": None,
-            "trail_activation": None,
-            "trail_distance": 0.0,
+            "sl_price": sl_price,
+            "tp_price": tp_price,
+            "trail_activation": trail_activation_px,
+            "trail_distance": trail_dist or 0.0,
+            "trail_lock_pct": trail_lock if trail_lock is not None else 0.0,
+            "peak_fav": entry_px,  # for trailing peak tracking
             "strategy": self.strategy_name,
             "closed": False,
             "exit_price": None,
@@ -547,6 +747,177 @@ class Backtester:
             "_swap_acc": 0.0,
             "_day_net": getattr(signal, 'day_net', None),
         }
+
+    def load_lsr_data(self, symbol: str, hours: int = 24, end_time: str = ""):
+        """Загрузить данные LSR для символа из ClickHouse.
+
+        Возвращает список external_signals: [{ts, symbol, direction, zscore, price_at_event}]
+        """
+        try:
+            import requests as _r
+
+            # Сначала загрузить LSR данные
+            lsr_query = f"""
+            SELECT timestamp, ratio
+            FROM crypto.long_short_ratio
+            WHERE symbol='{symbol}' AND source='bybit_global'
+            AND timestamp >= toDateTime64('{end_time}', 3, 'UTC') - INTERVAL {hours} HOUR
+            AND timestamp <= toDateTime64('{end_time}', 3, 'UTC')
+            ORDER BY timestamp
+            FORMAT JSONEachRow
+            """
+            resp = _r.get(self.ch_host, params={"query": lsr_query}, timeout=30)
+            resp.raise_for_status()
+            raw = resp.text.strip()
+            if not raw:
+                return []
+
+            lsr_data = []
+            for line in raw.split('\n'):
+                line = line.strip()
+                if not line:
+                    continue
+                row = json.loads(line)
+                lsr_data.append({
+                    'timestamp': row['timestamp'],
+                    'ratio': row['ratio']
+                })
+
+            if not lsr_data:
+                return []
+
+            # Вычислить z-score (running window — O(1) per point)
+            from collections import deque
+            window = 720  # 720 часов = 30 дней
+            win_vals = deque()
+            win_sum = 0.0
+            win_sum_sq = 0.0
+            zscores = []
+            min_periods = 100
+            for val in [r['ratio'] for r in lsr_data]:
+                win_vals.append(val)
+                win_sum += val
+                win_sum_sq += val * val
+                if len(win_vals) > window:
+                    old = win_vals.popleft()
+                    win_sum -= old
+                    win_sum_sq -= old * old
+                n = len(win_vals)
+                if n >= min_periods:
+                    mu = win_sum / n
+                    var = win_sum_sq / n - mu * mu
+                    sigma = var ** 0.5 if var > 1e-12 else 0.001
+                    z = (val - mu) / sigma
+                    zscores.append(z)
+                else:
+                    zscores.append(0.0)
+
+            # Обработать события пересечения
+            signals = []
+            for i in range(1, len(zscores)):
+                zprev = zscores[i-1]
+                zcurr = zscores[i]
+
+                # Кросс-условия
+                if zprev < 2.0 and zcurr >= 2.0:
+                    direction = 'SHORT'
+                elif zprev > -2.0 and zcurr <= -2.0:
+                    direction = 'LONG'
+                else:
+                    continue
+
+                event_ts = lsr_data[i]['timestamp']
+
+                # Получить цену на момент события (5m close)
+                price_query = f"""
+                SELECT close
+                FROM crypto.klines
+                WHERE symbol='{symbol}' AND interval='5m'
+                AND timestamp <= toDateTime64('{event_ts}', 3, 'UTC')
+                ORDER BY timestamp DESC
+                LIMIT 1
+                FORMAT JSONEachRow
+                """
+                resp = _r.get(self.ch_host, params={"query": price_query}, timeout=30)
+                resp.raise_for_status()
+                raw = resp.text.strip()
+                price_result = []
+                if raw:
+                    for line in raw.split('\n'):
+                        line = line.strip()
+                        if line:
+                            price_result.append(json.loads(line))
+
+                if price_result:
+                    price_at_event = price_result[0]['close']
+                else:
+                    price_at_event = 0.0
+
+                signals.append({
+                    'ts': event_ts,
+                    'timestamp': event_ts,
+                    'symbol': symbol,
+                    'direction': direction,
+                    'zscore': zcurr,
+                    'zprev': zprev,
+                    'price_at_event': price_at_event,
+                    'action': 'signal'
+                })
+
+            return signals
+
+        except Exception as e:
+            logger.warning(f"Ошибка загрузки LSR данных для {symbol}: {e}")
+            return []
+
+    def _check_sl_tp_trail(self, pos_dict: dict, price: float) -> str:
+        """Проверить SL/TP/Trail позиции (из YAML close params).
+
+        Returns 'sl', 'tp', 'trailing', or 'hold'.
+        Обновляет pos_dict['sl_price'] при трейлинге.
+        """
+        direction = pos_dict["direction"]
+        entry = pos_dict["entry_price"]
+        sl = pos_dict.get("sl_price")
+        tp = pos_dict.get("tp_price")
+        trail_act = pos_dict.get("trail_activation")
+        trail_dist = pos_dict.get("trail_distance", 0.0)
+        trail_lock = pos_dict.get("trail_lock_pct", 0.0)
+        peak = pos_dict.get("peak_fav", entry)
+
+        if direction == "LONG":
+            # Trailing
+            if trail_act is not None and price >= trail_act:
+                if price > peak:
+                    peak = price
+                    pos_dict["peak_fav"] = peak
+                new_sl = peak * (1.0 - trail_dist)
+                if trail_lock > 0:
+                    new_sl = max(new_sl, entry * (1.0 + trail_lock))
+                sl = max(sl if sl is not None else 0, new_sl)
+                pos_dict["sl_price"] = sl
+            # SL check
+            if sl is not None and price <= sl:
+                return "sl"
+            # TP check
+            if tp is not None and price >= tp:
+                return "tp"
+        else:  # SHORT
+            if trail_act is not None and price <= trail_act:
+                if price < peak:
+                    peak = price
+                    pos_dict["peak_fav"] = peak
+                new_sl = peak * (1.0 + trail_dist)
+                if trail_lock > 0:
+                    new_sl = min(new_sl, entry * (1.0 - trail_lock))
+                sl = min(sl if sl is not None else float('inf'), new_sl)
+                pos_dict["sl_price"] = sl
+            if sl is not None and price >= sl:
+                return "sl"
+            if tp is not None and price <= tp:
+                return "tp"
+
+        return "hold"
 
     def _close_position(
         self, pos: dict, price: float, bar_time: str,

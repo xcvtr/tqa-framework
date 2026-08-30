@@ -25,6 +25,7 @@ def load_m1_from_ch(
     db: str = "",
     end_time: str = "",
     source: str = "bars",
+    interval: str = "1m",
 ) -> list[dict]:
     """Загрузить M1 бары из ClickHouse.
 
@@ -33,21 +34,23 @@ def load_m1_from_ch(
       - forex:     таблица forex.bars (symbol, time, open, high, low, close, vol)
       - mt5_continuous: таблица moex.mt5_continuous (ticker, bt, opn, hi, lo, prc, vol)
         + опционально day_net из moex.futoi (для OI-стратегии)
+      - crypto:    таблица crypto.klines (symbol, timestamp, open, high, low, close, volume, interval)
 
     Args:
         symbol: Тикер (GD, GZ, EURUSD и т.д.)
         hours: За сколько часов до end_time загрузить
         host: CH URL (из CH_URL env или по умолчанию)
-        db: БД (moex, forex)
+        db: БД (moex, forex, crypto)
         end_time: Фиксированное окончание (ISO). Если пусто — now()
-        source: 'bars' | 'mt5_continuous' — откуда читать бары
+        source: 'bars' | 'mt5_continuous' — откуда читать бары (для moex/forex)
+        interval: '5m' | '1m' — интервал баров (для crypto)
 
     Returns:
         list[dict] с ключами: ts, open, high, low, close, volume
     """
     url = host or _CH_URL
     if not db:
-        raise ValueError("db обязателен: 'moex' или 'forex'")
+        raise ValueError("db обязателен: 'moex' / 'forex' / 'crypto'")
 
     end_condition = f"'{end_time}'" if end_time else "now()"
 
@@ -60,19 +63,56 @@ def load_m1_from_ch(
             end_ts = "now()"
         query = f"""
         SELECT
-            toTimeZone(time, 'UTC') as ts,
+            toTimeZone(toDateTime64(toString(time), 3, 'UTC'), 'UTC') as ts,
             open,
             high,
             low,
             close,
-            vol as volume
+            volume as volume
         FROM forex.bars
         WHERE symbol = '{symbol}'
-          AND time >= {end_ts} - INTERVAL {hours} HOUR
-          AND time <= {end_ts}
+          AND toDateTime64(toString(time), 3, 'UTC') >= {end_ts} - INTERVAL {hours} HOUR
+          AND toDateTime64(toString(time), 3, 'UTC') <= {end_ts}
         ORDER BY time
         FORMAT JSONEachRow
         """
+    elif db == "crypto":
+        # crypto.klines: symbol, timestamp, open, high, low, close, volume, interval
+        # crypto.klines_1m: полные 1m данные (без колонки interval)
+        if interval == '1m':
+            tbl = "crypto.klines_1m"
+            query = f"""
+SELECT
+    toTimeZone(timestamp, 'UTC') as ts,
+    open,
+    high,
+    low,
+    close,
+    volume as volume
+FROM {tbl}
+WHERE symbol = '{symbol}'
+  AND timestamp >= {end_condition} - INTERVAL {hours} HOUR
+  AND timestamp <= {end_condition}
+ORDER BY timestamp
+FORMAT JSONEachRow
+"""
+        else:
+            query = f"""
+SELECT
+    toTimeZone(timestamp, 'UTC') as ts,
+    open,
+    high,
+    low,
+    close,
+    volume as volume
+FROM crypto.klines
+WHERE symbol = '{symbol}'
+  AND interval = '{interval}'
+  AND timestamp >= {end_condition} - INTERVAL {hours} HOUR
+  AND timestamp <= {end_condition}
+ORDER BY timestamp
+FORMAT JSONEachRow
+"""
     else:
         # moex.bars: ticker, bt, opn, hi, lo, prc, vol
         # moex.mt5_continuous (source='mt5_continuous') — та же схема колонок
@@ -103,7 +143,7 @@ def load_m1_from_ch(
                 hi as high,
                 lo as low,
                 prc as close,
-                vol as volume
+                volume as volume
             FROM {tbl}
             WHERE ticker = '{symbol}' AND tf = 'D1'
               AND bt >= {end_condition} - INTERVAL {hours} HOUR
@@ -122,7 +162,7 @@ def load_m1_from_ch(
                 hi as high,
                 lo as low,
                 prc as close,
-                vol as volume
+                volume as volume
             FROM {tbl}
             WHERE ticker = '{_src_sym}' AND tf = 'H1'
               AND bt >= {end_condition} - INTERVAL {hours} HOUR
@@ -139,7 +179,7 @@ def load_m1_from_ch(
                 hi as high,
                 lo as low,
                 prc as close,
-                vol as volume
+                volume as volume
             FROM {tbl}
             WHERE ticker = '{symbol}'
               AND bt >= {end_condition} - INTERVAL {hours} HOUR

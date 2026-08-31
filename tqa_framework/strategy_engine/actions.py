@@ -179,7 +179,9 @@ def _lsr_execute(symbol: str, price: float, config: dict, state: dict) -> list[S
     scan_mult = 60
     end_idx = min(start_idx + int(hold_h * scan_mult), len(px_c) - 1)
     direction = direction_int
-    comm_slip = 0.0010 + 0.0005
+    # comm/slip из конфига (live: PG strategy_config comm=0.001, slip=0.0005).
+    # YAML risk.comission/risk.slippage подключаются в _act_params в _run_lsr_mode.
+    comm_slip = float(config.get('comm', 0.001)) + float(config.get('slip', 0.0005))
     sl_px = entry * (1 - sl_pct) if direction == 1 else entry * (1 + sl_pct)
     tp_px = entry * (1 + tp_pct) if direction == 1 else entry * (1 - tp_pct)
     pyr_px = entry * (1 + pyr_trigger) if direction == 1 else entry * (1 - pyr_trigger)

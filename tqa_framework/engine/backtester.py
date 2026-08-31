@@ -386,6 +386,45 @@ class Backtester:
                     all_external_signals.extend(signals)
                     logger.info(f"Загружено {len(signals)} LSR сигналов для {symbol}")
 
+        # ── Apply exclude syms/hours/DOW from YAML (по ИСХОДНОМУ ts события!) ──
+        # Live detect.py фильтрует по ts события кросса (до ремапа на tf-бар).
+        # Ремап ниже сдвигает ts на следующий tf-бар → фильтр по ремапленному ts
+        # терял бы пограничные сигналы (10:56–10:59 → 11:00-бар отсекался ошибочно).
+        if self._engine_config and self.strategy_engine_path:
+            try:
+                import yaml as _yl
+                if getattr(self, '_raw_yaml', None):
+                    _raw_yaml = self._raw_yaml
+                else:
+                    with open(self.strategy_engine_path) as _f:
+                        _raw_yaml = _yl.safe_load(_f)
+                _excl = _raw_yaml.get("exclude", {})
+                _excl_syms = set(_excl.get("syms", []) or [])
+                _excl_hours = set(_excl.get("hours", []) or [])
+                _excl_dow = set(_excl.get("dow", []) or [])
+                if _excl_syms or _excl_hours or _excl_dow:
+                    _before = len(all_external_signals)
+                    _filtered = []
+                    for _sig in all_external_signals:
+                        if _sig.get("symbol") in _excl_syms:
+                            continue
+                        _ts = _sig.get("ts", "")
+                        try:
+                            from datetime import datetime as _dt
+                            _d = _dt.fromisoformat(_ts.replace("T", " ").split(".")[0])
+                            if _d.hour in _excl_hours:
+                                continue
+                            if _d.weekday() in _excl_dow:
+                                continue
+                        except (ValueError, AttributeError):
+                            pass
+                        _filtered.append(_sig)
+                    all_external_signals = _filtered
+                    logger.info("Exclude syms=%s hours=%s DOW=%s: %d → %d сигналов",
+                                _excl_syms, _excl_hours, _excl_dow, _before, len(all_external_signals))
+            except Exception as _ex:
+                logger.warning("Не удалось применить exclude фильтры из YAML: %s", _ex)
+
         # ── REMAP: LSR event timestamps → next 5m bar timestamp ──
         # Python simulate_trade() uses np.searchsorted(px_t5, ev_ts, side='right')
         # to find the FIRST 5m bar AFTER each LSR cross event.
@@ -409,39 +448,6 @@ class Backtester:
                 if idx < len(bar_times):
                     sig["ts"] = bar_times[idx]
                     sig["timestamp"] = bar_times[idx]
-
-        # ── Apply exclude hours/DOW from YAML ──
-        if self._engine_config and self.strategy_engine_path:
-            try:
-                import yaml as _yl
-                if getattr(self, '_raw_yaml', None):
-                    _raw_yaml = self._raw_yaml
-                else:
-                    with open(self.strategy_engine_path) as _f:
-                        _raw_yaml = _yl.safe_load(_f)
-                _excl = _raw_yaml.get("exclude", {})
-                _excl_hours = set(_excl.get("hours", []))
-                _excl_dow = set(_excl.get("dow", []))
-                if _excl_hours or _excl_dow:
-                    _before = len(all_external_signals)
-                    _filtered = []
-                    for _sig in all_external_signals:
-                        _ts = _sig.get("ts", "")
-                        try:
-                            from datetime import datetime as _dt
-                            _d = _dt.fromisoformat(_ts.replace("T", " ").split(".")[0])
-                            if _d.hour in _excl_hours:
-                                continue
-                            if _d.weekday() in _excl_dow:
-                                continue
-                        except (ValueError, AttributeError):
-                            pass
-                        _filtered.append(_sig)
-                    all_external_signals = _filtered
-                    logger.info("Exclude hours=%s DOW=%s: %d → %d сигналов",
-                                _excl_hours, _excl_dow, _before, len(all_external_signals))
-            except Exception as _ex:
-                logger.warning("Не удалось применить exclude фильтры из YAML: %s", _ex)
 
         # Индекс сигналов по времени
         sym_ext_idx = {}
@@ -1057,20 +1063,45 @@ class Backtester:
         for _ck in ('sl_pct', 'tp_pct', 'trail_act', 'trail_dist', 'trail_lock', 'hold_h'):
             if _ck in _close:
                 _act_params[_ck] = _close[_ck]
-        _risk = _raw.get('risk', {})
+        _risk = _raw.get('risk', {}) or {}
         _pyr = _risk.get('pyramiding', {})
         _act_params['pyr_trigger'] = float(_pyr.get('trigger', 0.05))
         _act_params['pyr_add'] = float(_pyr.get('add', 0.5))
 
-        # Live sizing (tick.py:160,238): risk = base_risk * sym_risk[sym],
+        # Live sizing (tick.py:160,238): risk = base_risk * sym_risk[sym] * lev,
         # pnl_usd = eq_open * risk * lev * pnl_pct. pnl_eff from _lsr_execute
         # already carries the pyramiding factor, so _rr() must be base*sym*lev.
-        _sym_risk = (_raw.get('sym_risk') or {})
-        _lev = float((_raw.get('params') or {}).get('leverage', 1.0) or 1.0)
+        # ✅ sym_risk/leverage живут в секции `risk:` (lsr_cross.strategy.yaml —
+        # top-level ключи = strategy/version/metrics/signals/exclude/risk/data_sources).
+        # Fallback на top-level sym_risk/params.leverage (config.yaml) — совместимость.
+        _sym_risk = _risk.get('sym_risk') or _raw.get('sym_risk') or {}
+        _risk_lev = _risk.get('leverage')
+        if _risk_lev is not None:
+            _lev = float(_risk_lev or 1.0)
+        else:
+            _lev = float((_raw.get('params') or {}).get('leverage', 1.0) or 1.0)
+        # base_risk из YAML переопределяет CLI --risk-pct (live: 0.08),
+        # CLI --risk-pct больше НЕ перекрывает YAML молча.
+        _base_risk = _risk.get('base_risk')
+        _rr_base = float(_base_risk) if _base_risk is not None else self.risk_pct
+        if _base_risk is not None and abs(float(_base_risk) - self.risk_pct) > 1e-9:
+            logger.info("base_risk из YAML risk.base_risk=%.4f переопределяет CLI risk_pct=%.4f",
+                        float(_base_risk), self.risk_pct)
+        # comm/slip из YAML risk.comission/risk.slippage → в параметры action
+        _comm_y = _risk.get('comission')
+        if _comm_y is not None:
+            _act_params['comm'] = float(_comm_y)
+        _slip_y = _risk.get('slippage')
+        if _slip_y is not None:
+            _act_params['slip'] = float(_slip_y)
+        # DD-stop: adverse-only MTM, порог из YAML risk.dd_stop_pct (live 0.25)
+        _dd_stop_pct = float(_risk.get('dd_stop_pct', 0.25) or 0.25)
+        # exclude.syms — дополнительный фильтр на прекомпуте (паритет detect.py)
+        _excl_syms = set((_raw.get('exclude', {}) or {}).get('syms', []) or [])
 
         def _rr(sym):
             _m = _sym_risk.get(sym)
-            return self.risk_pct * (float(_m) if _m else 1.0) * _lev
+            return _rr_base * (float(_m) if _m else 1.0) * _lev
 
         lsr_exec = get_action('lsr_execute')
 
@@ -1078,6 +1109,8 @@ class Backtester:
         precomputed = []
         for sig in all_external_signals:
             sym = sig.get('symbol')
+            if sym in _excl_syms:
+                continue  # exclude.syms (SOLUSDT) — паритет detect.py
             if sym not in k5_cache or sym not in k1_cache:
                 continue
             state = {
@@ -1139,6 +1172,16 @@ class Backtester:
         peak = eq
         max_dd = 0.0
         equity_curve = []
+        # Adverse-only MTM DD (live tick.py:253-292): eq_mtm = equity − equity×Σ risk×lev×max(0,adverse).
+        # equity здесь реализованная (cash), как в live (eq_open = realized equity).
+        peak_adv = eq
+        # Порог DD-stop по adverse-кривой
+        dd_stop_pct = _dd_stop_pct
+        # Символы, закрытые <7 дней назад (паритет detect.py: recent_closed)
+        recent_closed_at = {}
+        # Одна позиция на символ (паритет detect.py: open_syms)
+        _max_pos = int(_risk.get('max_pos') or self.max_conc or 6)
+
         all_ts = sorted(set().union(*[price_map[s].keys() for s in price_map]))
         if not all_ts:
             logger.error("Нет 1m данных")
@@ -1149,31 +1192,59 @@ class Backtester:
         positions_list.sort(key=lambda p: p['entry_ts'])
         sample_every = max(1, len(all_ts) // 1000)
 
+        def _close_p(p, pnl_dollars, reason, exit_ts, exit_px):
+            """Запомнить реализованный pnl позиции для trades-построителя."""
+            p['_pnl_dollars'] = pnl_dollars
+            p['_exit_reason'] = reason
+            p['exit_ts'] = exit_ts
+            p['exit_px'] = exit_px
+            p['eq_at_entry'] = None
+
         for bi, bar_ts in enumerate(all_ts):
+            # ── Открытие позиций (с ограничениями портфеля, паритет detect.py) ──
             while next_pos_idx < len(positions_list):
                 p = positions_list[next_pos_idx]
                 if p['entry_ts'] <= bar_ts:
-                    if len(active) < self.max_conc:
-                        p['eq_at_entry'] = float(eq)
-                        p['entry_equity'] = float(eq)
+                    _skip = None
+                    if getattr(self, '_lsr_dd_stopped', False):
+                        _skip = 'dd_stopped'
+                    elif len(active) >= _max_pos:
+                        _skip = 'max_pos'
+                    elif any(a['symbol'] == p['symbol'] for a in active):
+                        _skip = 'one_per_symbol'
+                    elif p['symbol'] in recent_closed_at and \
+                            (bar_ts - recent_closed_at[p['symbol']]).total_seconds() < 7 * 86400:
+                        _skip = 'recent_closed_7d'
+                    if _skip:
+                        p['_skipped'] = True
+                        p['_skip_reason'] = _skip
+                    else:
+                        # eq_open = реализованная equity (cash), как live tick.py
+                        p['eq_at_entry'] = float(cash)
+                        p['entry_equity'] = float(cash)
                         p['opened'] = True
                         active.append(p)
-                    else:
-                        p['_skipped'] = True
                     next_pos_idx += 1
                 else:
                     break
 
+            # ── Закрытие по прекомпутованному exit (SL/TP/trail/timeout) ──
             still_active = []
             for p in active:
                 if p['exit_ts'] <= bar_ts:
                     pnl_dollars = p['eq_at_entry'] * _rr(p['symbol']) * p['pnl_eff']
                     cash += pnl_dollars
-                    p['eq_at_entry'] = None
+                    recent_closed_at[p['symbol']] = bar_ts
+                    _close_p(p, pnl_dollars,
+                             'sl_hit' if p['pnl_eff'] < 0 else 'tp_hit',
+                             p['exit_ts'], p['exit_px'])
                 else:
                     still_active.append(p)
             active = still_active
+            if cash > peak_adv:
+                peak_adv = cash  # реализованный рост equity (live: peak после закрытий)
 
+            # ── Signed MTM: портфельная стоимость ──
             port_value = cash
             for p in active:
                 mp = price_map[p['symbol']].get(bar_ts)
@@ -1182,7 +1253,8 @@ class Backtester:
                         mtm_pnl = (mp - p['entry_px']) / p['entry_px']
                     else:
                         mtm_pnl = (p['entry_px'] - mp) / p['entry_px']
-                    pos_value = p['eq_at_entry'] * _rr(p['symbol']) * mtm_pnl
+                    # pos_value с пирамидальным множителем (live: p_risk включает pyr ×1.5)
+                    pos_value = p['eq_at_entry'] * _rr(p['symbol']) * mtm_pnl * p['base_risk']
                     port_value += pos_value
 
             eq = port_value
@@ -1191,6 +1263,46 @@ class Backtester:
             dd = (peak - port_value) / peak * 100 if peak > 0 else 0
             if dd > max_dd:
                 max_dd = dd
+
+            # ── Adverse-only MTM + DD-stop (live tick.py:253-292) ──
+            if active and not getattr(self, '_lsr_dd_stopped', False):
+                mtm_dd_sum = 0.0
+                for p in active:
+                    mp = price_map[p['symbol']].get(bar_ts)
+                    if mp is None:
+                        continue
+                    entry = p['entry_px']
+                    if p['direction_int'] == 1:
+                        adverse = max(0.0, (entry - mp) / entry)
+                    else:
+                        adverse = max(0.0, (mp - entry) / entry)
+                    mtm_dd_sum += _rr(p['symbol']) * adverse * p['base_risk']
+                eq_mtm = cash - cash * mtm_dd_sum
+                if eq_mtm > peak_adv:
+                    peak_adv = eq_mtm
+                dd_adv = (peak_adv - eq_mtm) / peak_adv * 100 if peak_adv > 0 else 0.0
+                if dd_adv > dd_stop_pct * 100.0:
+                    logger.warning("LSR DD-STOP: adverse MTM DD %.2f%% > %.0f%% — закрываю все %d позиций",
+                                   dd_adv, dd_stop_pct * 100.0, len(active))
+                    _cs = float(_act_params.get('comm', 0.001)) + float(_act_params.get('slip', 0.0005))
+                    for p in active:
+                        mp = price_map[p['symbol']].get(bar_ts)
+                        if mp is not None:
+                            entry = p['entry_px']
+                            if p['direction_int'] == 1:
+                                mkt_move = (mp - entry) / entry
+                            else:
+                                mkt_move = (entry - mp) / entry
+                            # рынок по последнему close, comm/slip как при обычном закрытии
+                            mkt_eff = (mkt_move - _cs) * p['base_risk']
+                            pnl_dollars = p['eq_at_entry'] * _rr(p['symbol']) * mkt_eff
+                            cash += pnl_dollars
+                            recent_closed_at[p['symbol']] = bar_ts
+                            _close_p(p, pnl_dollars, 'dd_stop', bar_ts, float(mp))
+                        else:
+                            p['eq_at_entry'] = None
+                    self._lsr_dd_stopped = True
+                    active = []  # все закрыты; новые входы заблокированы
 
             if bi % sample_every == 0 or bi == len(all_ts) - 1:
                 equity_curve.append({
@@ -1201,12 +1313,14 @@ class Backtester:
                     "drawdown": round(max_dd, 2),
                 })
 
-        # Close remaining
+        # Close remaining (позиции, не закрытые до конца окна)
         for p in positions_list:
             if p['opened'] and p['eq_at_entry'] is not None:
                 pnl_dollars = p['eq_at_entry'] * _rr(p['symbol']) * p['pnl_eff']
                 cash += pnl_dollars
-                p['eq_at_entry'] = None
+                _close_p(p, pnl_dollars,
+                         'sl_hit' if p['pnl_eff'] < 0 else 'tp_hit',
+                         p['exit_ts'], p['exit_px'])
 
         # Build trades
         all_trades = []
@@ -1214,7 +1328,7 @@ class Backtester:
             if not p['opened'] or p.get('_skipped'):
                 continue
             ee = p['entry_equity'] or self.initial_equity
-            pnl_dollars = ee * _rr(p['symbol']) * p['pnl_eff']
+            pnl_dollars = p.get('_pnl_dollars', ee * _rr(p['symbol']) * p['pnl_eff'])
             qty = ee * _rr(p['symbol']) / p['entry_px'] if p['entry_px'] else 0
             all_trades.append({
                 "strategy": self.strategy_name,
@@ -1227,7 +1341,7 @@ class Backtester:
                 "quantity": qty,
                 "pnl": pnl_dollars,
                 "pnl_pct": p['pnl_eff'] * 100,
-                "exit_reason": "sl_hit" if p['pnl_eff'] < 0 else "tp_hit",
+                "exit_reason": p.get('_exit_reason') or ("sl_hit" if p['pnl_eff'] < 0 else "tp_hit"),
                 "tags": "{}",
             })
 

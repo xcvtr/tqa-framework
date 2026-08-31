@@ -1062,6 +1062,16 @@ class Backtester:
         _act_params['pyr_trigger'] = float(_pyr.get('trigger', 0.05))
         _act_params['pyr_add'] = float(_pyr.get('add', 0.5))
 
+        # Live sizing (tick.py:160,238): risk = base_risk * sym_risk[sym],
+        # pnl_usd = eq_open * risk * lev * pnl_pct. pnl_eff from _lsr_execute
+        # already carries the pyramiding factor, so _rr() must be base*sym*lev.
+        _sym_risk = (_raw.get('sym_risk') or {})
+        _lev = float((_raw.get('params') or {}).get('leverage', 1.0) or 1.0)
+
+        def _rr(sym):
+            _m = _sym_risk.get(sym)
+            return self.risk_pct * (float(_m) if _m else 1.0) * _lev
+
         lsr_exec = get_action('lsr_execute')
 
         # ── 3. Pre-compute trades from external signals ──
@@ -1157,7 +1167,7 @@ class Backtester:
             still_active = []
             for p in active:
                 if p['exit_ts'] <= bar_ts:
-                    pnl_dollars = p['eq_at_entry'] * self.risk_pct * p['pnl_eff']
+                    pnl_dollars = p['eq_at_entry'] * _rr(p['symbol']) * p['pnl_eff']
                     cash += pnl_dollars
                     p['eq_at_entry'] = None
                 else:
@@ -1172,7 +1182,7 @@ class Backtester:
                         mtm_pnl = (mp - p['entry_px']) / p['entry_px']
                     else:
                         mtm_pnl = (p['entry_px'] - mp) / p['entry_px']
-                    pos_value = p['eq_at_entry'] * self.risk_pct * mtm_pnl
+                    pos_value = p['eq_at_entry'] * _rr(p['symbol']) * mtm_pnl
                     port_value += pos_value
 
             eq = port_value
@@ -1194,7 +1204,7 @@ class Backtester:
         # Close remaining
         for p in positions_list:
             if p['opened'] and p['eq_at_entry'] is not None:
-                pnl_dollars = p['eq_at_entry'] * self.risk_pct * p['pnl_eff']
+                pnl_dollars = p['eq_at_entry'] * _rr(p['symbol']) * p['pnl_eff']
                 cash += pnl_dollars
                 p['eq_at_entry'] = None
 
@@ -1204,8 +1214,8 @@ class Backtester:
             if not p['opened'] or p.get('_skipped'):
                 continue
             ee = p['entry_equity'] or self.initial_equity
-            pnl_dollars = ee * self.risk_pct * p['pnl_eff']
-            qty = ee * self.risk_pct * p['base_risk'] / p['entry_px'] if p['entry_px'] else 0
+            pnl_dollars = ee * _rr(p['symbol']) * p['pnl_eff']
+            qty = ee * _rr(p['symbol']) / p['entry_px'] if p['entry_px'] else 0
             all_trades.append({
                 "strategy": self.strategy_name,
                 "ticker": p['symbol'],

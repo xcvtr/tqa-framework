@@ -161,24 +161,23 @@ def _lsr_execute(symbol: str, price: float, config: dict, state: dict) -> list[S
     px_t5 = np.array([_parse_ts(b['ts']).timestamp() for b in k5])
     px_c5 = np.array([b['close'] for b in k5])
     ev_unix = ev_ts.timestamp()
-    ei = np.searchsorted(px_t5, ev_unix, side='right')
-    if ei + 1 >= len(px_c5):
-        return []
-    entry = float(px_c5[ei])
 
     px_t = np.array([_parse_ts(b['ts']).timestamp() for b in k1])
     px_h = np.array([b['high'] for b in k1])
     px_l = np.array([b['low'] for b in k1])
     px_c = np.array([b['close'] for b in k1])
 
-    entry_ts_5m = float(px_t5[ei])
-    entry_close_ts = entry_ts_5m + (px_t5[1] - px_t5[0])
-    si = np.searchsorted(px_t, entry_close_ts, side='right')
+    # Live entry (tick.py opens at last_close = first 1m close at/after event).
+    # NOT the next 5m close — live enters on the next 1m tick.
+    si = np.searchsorted(px_t, ev_unix, side='right')
     if si + 1 >= len(px_c):
         return []
+    entry = float(px_c[si])
+    entry_ts_1m = float(px_t[si])
+    start_idx = si + 1  # scan from the bar AFTER entry (entry taken at close of bar si)
 
     scan_mult = 60
-    end_idx = min(si + int(hold_h * scan_mult), len(px_c) - 1)
+    end_idx = min(start_idx + int(hold_h * scan_mult), len(px_c) - 1)
     direction = direction_int
     comm_slip = 0.0010 + 0.0005
     sl_px = entry * (1 - sl_pct) if direction == 1 else entry * (1 + sl_pct)
@@ -192,7 +191,7 @@ def _lsr_execute(symbol: str, price: float, config: dict, state: dict) -> list[S
     trail_active = False
     peak = entry
 
-    for j in range(si, end_idx + 1):
+    for j in range(start_idx, end_idx + 1):
         hi, lo = float(px_h[j]), float(px_l[j])
         if direction == 1:  # LONG
             mtm_worst = min(mtm_worst, lo)
@@ -263,7 +262,7 @@ def _lsr_execute(symbol: str, price: float, config: dict, state: dict) -> list[S
         action="lsr_execute",
         direction='LONG' if direction == 1 else 'SHORT',
         price=float(entry),
-        timestamp=str(_dt.fromtimestamp(entry_ts_5m)),
+        timestamp=str(_dt.fromtimestamp(entry_ts_1m)),
         params={
             'entry_px': float(entry),
             'exit_px': float(exit_px),

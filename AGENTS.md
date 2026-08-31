@@ -25,12 +25,9 @@ tqa-framework/
 │   └── defaults.yaml          ← дефолты
 ├── grid/
 │   └── runner.py              ← sweep параметров
-├── strategies/                ← конкретные стратегии
-│   ├── dragon/
-│   │   ├── detect.py
-│   │   ├── tick.py
-│   │   └── configs/
-│   ├── synthetic_bond/        ← YAML-конфиг для strategy_engine
+├── strategies/                ← ⚠️ ВАЖНО: стратегии живут в ПРОЕКТАХ, не здесь.
+│                                  В пакете остаются только Python detect/tick-хелперы.
+│   ├── dragon/                ← detect.py/tick.py (пример контракта)
 │   ├── impulse_return/
 │   ├── stop_hunt/
 │   └── funding_rate_trap/
@@ -39,6 +36,11 @@ tqa-framework/
 ├── RULES.md                   ← правила
 └── pyproject.toml
 ```
+
+> **Стратегия = проект.** Конкретные стратегии (`strategies/<name>/detect.py`, `tick.py`, YAML)
+> лежат в проектах (`~/projects/<PROJECT>/strategies/`). tqa-framework — движок:
+> strategy_engine, backtester, parser, actions. YAML-стратегии читаются по absolute path
+> (`--strategy-yaml /path/to/config.yaml`) или из PG `shared.strategies` (по имени).
 
 ### Live vs Backtest
 
@@ -159,20 +161,22 @@ python -m tqa_framework.engine.cli \
     --strategy-path ~/projects/TQA-MOEX \
     --tf 60 --days 365 --risk-pct 2
 
-# Или через YAML strategy_engine
+# Или через YAML strategy_engine (стратегия живёт в проекте — absolute path)
 python -m tqa_framework.engine.cli \
     backtest \
     --tickers Si \
-    --strategy-yaml tqa_framework/strategies/synthetic_bond/config.yaml \
+    --strategy-yaml ~/projects/<PROJECT>/strategies/synthetic_bond/config.yaml \
     --tf 60 --days 30 --risk-pct 0.5 --equity 100000
 
-# Или из PG (если загружена через `tqa strategy create`)
+# Или из PG shared.strategies (если загружена через `tqa strategy create`/seed_strategies.py)
 python -m tqa_framework.engine.cli \
     backtest \
     --tickers Si \
     --strategy-yaml synthetic_bond \
     --tf 60 --days 30 --risk-pct 0.5 --equity 100000
 ```
+
+> **Архитектура:** tqa-framework — чистый движок. Стратегические YAML живут в **проектах**, не в пакете. YAML читается по absolute path или из PG `shared.strategies`.
 
 ### Просмотр результатов
 
@@ -202,8 +206,8 @@ cd ~/projects/tqa-framework
 ### Управление стратегиями в PG
 
 ```bash
-# Загрузить YAML стратегию в PG
-tqa strategy create synthetic_bond tqa_framework/strategies/synthetic_bond/config.yaml
+# Загрузить YAML стратегию из проекта в PG
+tqa strategy create synthetic_bond ~/projects/<PROJECT>/strategies/synthetic_bond/config.yaml
 
 # Показать YAML из PG
 tqa strategy get synthetic_bond
@@ -211,8 +215,8 @@ tqa strategy get synthetic_bond
 # Список всех стратегий в PG
 tqa strategy list
 
-# Init-контейнер: загрузить все .yaml из директории в PG
-python scripts/seed_strategies.py [--dir tqa_framework/strategies]
+# Init-контейнер: загрузить все .yaml ИЗ ПРОЕКТА в PG (стратегии в проектах, не в пакете)
+python scripts/seed_strategies.py --dir ~/projects/<PROJECT>/strategies
 ```
 
 Результаты: `backtest.trades`, `backtest.equity_curve`, `backtest.summary`.

@@ -1053,6 +1053,10 @@ class Backtester:
         for sc in _raw.get('signals', []):
             if sc.get('then') == 'lsr_execute':
                 _act_params.update(sc.get('params', {}))
+        _close = _raw.get('close', {})
+        for _ck in ('sl_pct', 'tp_pct', 'trail_act', 'trail_dist', 'trail_lock', 'hold_h'):
+            if _ck in _close:
+                _act_params[_ck] = _close[_ck]
         _risk = _raw.get('risk', {})
         _pyr = _risk.get('pyramiding', {})
         _act_params['pyr_trigger'] = float(_pyr.get('trigger', 0.05))
@@ -1214,6 +1218,7 @@ class Backtester:
                 "pnl": pnl_dollars,
                 "pnl_pct": p['pnl_eff'] * 100,
                 "exit_reason": "sl_hit" if p['pnl_eff'] < 0 else "tp_hit",
+                "tags": "{}",
             })
 
         total_return = (cash - self.initial_equity) / self.initial_equity * 100
@@ -1237,6 +1242,8 @@ class Backtester:
             "profit_factor": round(pf, 2),
             "total_trades": len(all_trades),
             "calmar_ratio": round(calmar, 2),
+            "params": json.dumps({k: v for k, v in self.strategy_params.items()
+                                  if k != "dom_series"}, default=str),
         }
 
         self._lsr_result = {"summary": summary, "trades": all_trades, "equity_curve": equity_curve}

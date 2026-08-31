@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Init-контейнер: загрузить все YAML-стратегии из директории в PG.
+"""Загрузить YAML-стратегии из проекта в PG.
+
+Стратегии принадлежат проектам (не tqa-framework). Утилита ищет .yaml
+в указанной директории проекта и загружает каждый в PG `shared.strategies`.
 
 Использование:
-    python scripts/seed_strategies.py [--pg-url URL] [--dir strategies/]
+    python scripts/seed_strategies.py --dir ~/projects/TQA-crypto/strategies \
+        [--pg-url URL]
 
-Ищет .yaml файлы в указанной директории, загружает каждый в PG.
-Имя стратегии берётся из поля 'strategy' в YAML.
+Имя стратегии берётся из поля 'strategy' в YAML (обязателен).
 Если файл невалидный — ошибка, но остальные файлы продолжают загружаться.
 """
 
@@ -21,11 +24,16 @@ logger = logging.getLogger("seed")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Seed strategies from YAML files to PG")
+    parser = argparse.ArgumentParser(description="Seed strategies from project YAML files to PG")
     parser.add_argument("--pg-url", help="PG URL (default: из PG_URL env)")
-    parser.add_argument("--dir", default="tqa_framework/strategies",
-                        help="Directory with YAML strategy files")
+    parser.add_argument("--dir", default="",
+                        help="Директория проекта с YAML-стратегиями (например ~/projects/<proj>/strategies)")
     args = parser.parse_args()
+
+    if not args.dir:
+        logger.error("Укажите --dir с путём к директории проекта (стратегии живут в проектах, не в пакете). "
+                     "Пример: python scripts/seed_strategies.py --dir ~/projects/TQA-crypto/strategies")
+        sys.exit(1)
 
     from tqa_framework.engine.pg_state import PGState
     from tqa_framework.strategy_engine.parser import load_strategy_from_string
@@ -33,7 +41,7 @@ def main():
     pg = PGState(pg_url=args.pg_url)
     pg.ensure_tables_strategies()
 
-    strategy_dir = Path(args.dir)
+    strategy_dir = Path(args.dir).expanduser()
     if not strategy_dir.is_dir():
         logger.error("Директория не найдена: %s", strategy_dir)
         sys.exit(1)

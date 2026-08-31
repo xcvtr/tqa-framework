@@ -159,7 +159,7 @@ def cmd_backtest(args):
 
     # ── Выбираем бэктестер ──
     # Auto-route lsr_cross to specialized backtester (event-driven 1m hi/lo sim)
-    _use_lsr = args.backtester == "lsr_cross" or _yaml_strategy == "lsr_cross"
+    _use_lsr = args.backtester == "lsr_cross"
     if _use_lsr:
         from tqa_framework.backtesters.lsr_cross import LsrCrossBacktester
         BacktesterClass = LsrCrossBacktester

@@ -246,7 +246,8 @@ sweep:
 
 Ошибка валидации = exit с сообщением. Невалидная стратегия не запускается.
 
-## Пример файла: `ma_crossover.strategy.yaml`
+## Пример файла: `ma_crossover.strategy.yaml` (в проекте, не в пакете)
+> Конкретные стратегии живут в проектах `~/projects/<PROJECT>/strategies/`, не в tqa-framework.
 
 ```yaml
 name: ma_crossover
@@ -344,7 +345,7 @@ exit_rules:
 Эквивалентный Python (нынешний test_ma detect.py + test_ma tick.py) — 75 строк кода.
 YAML — 120 строк, но без единой строчки Python и с grid-ready sweep.
 
-## Пример файла: `synthetic_bond_basis.strategy.yaml`
+## Пример файла: `synthetic_bond_basis.strategy.yaml` (в проекте, не в пакете)
 
 ```yaml
 name: synthetic_bond_basis

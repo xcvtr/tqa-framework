@@ -1,5 +1,16 @@
 # Changelog
 
+## [008] 2026-08-31
+### Added
+- LSR-CROSS портирован в YAML: action `lsr_execute` + mode `_run_lsr_mode()`
+- `strategies/lsr_cross/config.yaml` — YAML конфиг с external сигналами и 1m hi/lo exit
+- Точка ветвления в backtester.py run(): если YAML action=lsr_execute → LSR mode (1m MTM portfolio loop), иначе legacy per-tick
+- Пример: `--strategy-yaml lsr_cross` теперь через YAML engine, не Python LsrCrossBacktester
+
+### Changed
+- Результаты 1:1 с Python: +916.51%/18.92%/1319t/Calmar 48.44 (проверено на риск=0.14/3y/9 tickers)
+- Checkpoint: checkpoints/008-lsr-cross-yaml-port.md
+
 ## [007] 2026-08-31
 ### Added
 - Risk sweep (0.08-0.30, n=12) для LSR-CROSS

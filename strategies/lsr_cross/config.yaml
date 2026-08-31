@@ -1,0 +1,38 @@
+name: lsr_cross
+version: "2.0"
+metrics:
+  zscore:
+    type: external
+    params: { field: zscore }
+signals:
+  - id: lsr_long
+    priority: 1
+    when: true
+    then: lsr_execute
+    params:
+      sl_pct: 0.05
+      tp_pct: 0.18
+      trail_act: 0.04
+      trail_dist: 0.03
+      trail_lock: 0.02
+      hold_h: 120
+  - id: lsr_short
+    priority: 1
+    when: true
+    then: lsr_execute
+    params:
+      sl_pct: 0.05
+      tp_pct: 0.18
+      trail_act: 0.04
+      trail_dist: 0.03
+      trail_lock: 0.02
+      hold_h: 120
+exclude:
+  hours: []
+  dow: []
+  syms: []
+risk:
+  pyramiding:
+    trigger: 0.05
+    add: 0.5
+    max: 1

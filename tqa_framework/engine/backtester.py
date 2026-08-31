@@ -458,6 +458,16 @@ class Backtester:
         self.sym_ext_idx = sym_ext_idx
         self.sym_bars = sym_bars
 
+        # ── LSR-CROSS pre-computed mode: detect by YAML action ──
+        if self._raw_yaml and isinstance(self._raw_yaml, dict):
+            _signals = self._raw_yaml.get('signals', [])
+            if any(s.get('then') == 'lsr_execute' for s in _signals):
+                logger.info("LSR-CROSS mode detected (action=lsr_execute), running pre-compute + 1m MTM")
+                self._run_lsr_mode(sym_bars, end_time, all_external_signals)
+                if hasattr(self, '_lsr_result') and self._lsr_result:
+                    logger.info(f"LSR mode complete: {self._lsr_result['summary']['total_return']}% / {self._lsr_result['summary']['mdd']}% DD / {self._lsr_result['summary']['total_trades']} trades")
+                    return self._lsr_result
+
         # Общий временной индекс: union всех bar_time (отсортированный)
         all_times = sorted({b["ts"] for bars in sym_bars.values() for b in bars})
         # индекс бара по времени для каждого символа
@@ -1011,6 +1021,230 @@ class Backtester:
         """MTM по последней известной цене."""
         price = pos.get("_last_price", pos["entry_price"])
         return self._mtm(pos, price)
+
+    def _run_lsr_mode(self, sym_bars, end_time, all_external_signals):
+        """Pre-compute LSR trades with 1m hi/lo, run 1m MTM portfolio loop.
+
+        1:1 с LsrCrossBacktester.run() — per-event simulate_trade + 1m equity.
+        """
+        import json, yaml as _yl, logging
+        from collections import OrderedDict
+        from tqa_framework.engine.detect import load_m1_from_ch
+        from tqa_framework.strategy_engine.actions import get_action
+        from datetime import datetime, timezone
+
+        logger = logging.getLogger(__name__)
+        self.pg.ensure_schemas()
+        self.pg.ensure_tables_backtest()
+
+        # ── 1. 5m bars already in sym_bars; load 1m bars ──
+        k5_cache = dict(sym_bars)
+        k1_cache = {}
+        for sym in list(sym_bars.keys()):
+            bars_1m = load_m1_from_ch(sym, self.days * 24, self.ch_host, self.ch_db,
+                                       end_time=end_time,
+                                       source=getattr(self, 'data_source', 'bars'), interval='1m')
+            k1_cache[sym] = bars_1m if bars_1m else sym_bars[sym]
+            logger.info(f"  {sym}: {len(k1_cache[sym])} 1m баров")
+
+        # ── 2. Get action params from YAML ──
+        _raw = self._raw_yaml or {}
+        _act_params = {}
+        for sc in _raw.get('signals', []):
+            if sc.get('then') == 'lsr_execute':
+                _act_params.update(sc.get('params', {}))
+        _risk = _raw.get('risk', {})
+        _pyr = _risk.get('pyramiding', {})
+        _act_params['pyr_trigger'] = float(_pyr.get('trigger', 0.05))
+        _act_params['pyr_add'] = float(_pyr.get('add', 0.5))
+
+        lsr_exec = get_action('lsr_execute')
+
+        # ── 3. Pre-compute trades from external signals ──
+        precomputed = []
+        for sig in all_external_signals:
+            sym = sig.get('symbol')
+            if sym not in k5_cache or sym not in k1_cache:
+                continue
+            state = {
+                'k5_cache': k5_cache[sym],
+                'k1_cache': k1_cache[sym],
+                'external_signal': sig,
+                'symbol': sym,
+                'signal_id': 'lsr_execute',
+            }
+            cfg = dict(_act_params)
+            cfg['direction'] = 'LONG' if sig.get('direction') == 'LONG' else 'SHORT'
+            try:
+                signals = lsr_exec(sym, 0.0, cfg, state)
+                for sig_out in signals:
+                    p = sig_out.params
+                    precomputed.append({
+                        'entry_ts': sig_out.timestamp,
+                        'exit_ts': p['exit_ts'],
+                        'symbol': sym,
+                        'direction_int': int(p['direction_int']),
+                        'entry_px': p['entry_px'],
+                        'exit_px': p['exit_px'],
+                        'pnl_eff': p['pnl_eff'],
+                        'mtm_dd_pct': p['mtm_dd_pct'],
+                        'base_risk': p.get('base_risk', 1.0),
+                    })
+            except Exception as e:
+                logger.warning(f"lsr_execute error {sym}: {e}")
+        logger.info(f"Pre-computed {len(precomputed)} trades")
+
+        # ── 4. Build 1m price_map and portfolio loop ──
+        def _parse_ts(val):
+            if isinstance(val, datetime):
+                return val if val.tzinfo is None else val.replace(tzinfo=None)
+            return datetime.fromisoformat(str(val).replace('Z', '+00:00')).replace(tzinfo=None)
+
+        price_map = {}
+        for sym, bars in k1_cache.items():
+            pm = {}
+            for b in bars:
+                pm[_parse_ts(b['ts'])] = b['close']
+            price_map[sym] = pm
+
+        positions_list = []
+        for p in precomputed:
+            et = _parse_ts(p['entry_ts'])
+            xt = _parse_ts(p['exit_ts'])
+            positions_list.append({
+                'entry_ts': et, 'exit_ts': xt,
+                'symbol': p['symbol'], 'direction_int': p['direction_int'],
+                'entry_px': p['entry_px'], 'exit_px': p['exit_px'],
+                'base_risk': p['base_risk'], 'pnl_eff': p['pnl_eff'],
+                'mtm_dd_pct': p['mtm_dd_pct'],
+                'eq_at_entry': None, 'entry_equity': None, 'opened': False,
+            })
+
+        eq = float(self.initial_equity)
+        cash = eq
+        peak = eq
+        max_dd = 0.0
+        equity_curve = []
+        all_ts = sorted(set().union(*[price_map[s].keys() for s in price_map]))
+        if not all_ts:
+            logger.error("Нет 1m данных")
+            return
+
+        next_pos_idx = 0
+        active = []
+        positions_list.sort(key=lambda p: p['entry_ts'])
+        sample_every = max(1, len(all_ts) // 1000)
+
+        for bi, bar_ts in enumerate(all_ts):
+            while next_pos_idx < len(positions_list):
+                p = positions_list[next_pos_idx]
+                if p['entry_ts'] <= bar_ts:
+                    if len(active) < self.max_conc:
+                        p['eq_at_entry'] = float(eq)
+                        p['entry_equity'] = float(eq)
+                        p['opened'] = True
+                        active.append(p)
+                    else:
+                        p['_skipped'] = True
+                    next_pos_idx += 1
+                else:
+                    break
+
+            still_active = []
+            for p in active:
+                if p['exit_ts'] <= bar_ts:
+                    pnl_dollars = p['eq_at_entry'] * self.risk_pct * p['pnl_eff']
+                    cash += pnl_dollars
+                    p['eq_at_entry'] = None
+                else:
+                    still_active.append(p)
+            active = still_active
+
+            port_value = cash
+            for p in active:
+                mp = price_map[p['symbol']].get(bar_ts)
+                if mp is not None:
+                    if p['direction_int'] == 1:
+                        mtm_pnl = (mp - p['entry_px']) / p['entry_px']
+                    else:
+                        mtm_pnl = (p['entry_px'] - mp) / p['entry_px']
+                    pos_value = p['eq_at_entry'] * self.risk_pct * mtm_pnl
+                    port_value += pos_value
+
+            eq = port_value
+            if port_value > peak:
+                peak = port_value
+            dd = (peak - port_value) / peak * 100 if peak > 0 else 0
+            if dd > max_dd:
+                max_dd = dd
+
+            if bi % sample_every == 0 or bi == len(all_ts) - 1:
+                equity_curve.append({
+                    "strategy": self.strategy_name,
+                    "bar_time": str(bar_ts),
+                    "equity": round(port_value, 2),
+                    "cash_equity": round(cash, 2),
+                    "drawdown": round(max_dd, 2),
+                })
+
+        # Close remaining
+        for p in positions_list:
+            if p['opened'] and p['eq_at_entry'] is not None:
+                pnl_dollars = p['eq_at_entry'] * self.risk_pct * p['pnl_eff']
+                cash += pnl_dollars
+                p['eq_at_entry'] = None
+
+        # Build trades
+        all_trades = []
+        for p in positions_list:
+            if not p['opened'] or p.get('_skipped'):
+                continue
+            ee = p['entry_equity'] or self.initial_equity
+            pnl_dollars = ee * self.risk_pct * p['pnl_eff']
+            qty = ee * self.risk_pct * p['base_risk'] / p['entry_px'] if p['entry_px'] else 0
+            all_trades.append({
+                "strategy": self.strategy_name,
+                "ticker": p['symbol'],
+                "direction": 'LONG' if p['direction_int'] == 1 else 'SHORT',
+                "entry_price": p['entry_px'],
+                "exit_price": p['exit_px'],
+                "entry_time": str(p['entry_ts']),
+                "exit_time": str(p['exit_ts']),
+                "quantity": qty,
+                "pnl": pnl_dollars,
+                "pnl_pct": p['pnl_eff'] * 100,
+                "exit_reason": "sl_hit" if p['pnl_eff'] < 0 else "tp_hit",
+            })
+
+        total_return = (cash - self.initial_equity) / self.initial_equity * 100
+        wins = sum(1 for t in all_trades if t["pnl"] > 0)
+        win_rate = wins / len(all_trades) * 100 if all_trades else 0
+        gross_win = sum(t["pnl"] for t in all_trades if t["pnl"] > 0) if wins > 0 else 0
+        gross_loss = sum(abs(t["pnl"]) for t in all_trades if t["pnl"] < 0) if len(all_trades) - wins > 0 else 0
+        pf = gross_win / gross_loss if gross_loss > 0 else float('inf')
+        calmar = total_return / max_dd if max_dd > 0 else 0.0
+
+        summary = {
+            "strategy": self.strategy_name,
+            "tickers": list(dict.fromkeys(t["ticker"] for t in all_trades)),
+            "tf": self.tf_minutes,
+            "days": self.days,
+            "start_equity": self.initial_equity,
+            "end_equity": round(cash, 2),
+            "total_return": round(total_return, 2),
+            "mdd": round(max_dd, 2),
+            "win_rate": round(win_rate, 1),
+            "profit_factor": round(pf, 2),
+            "total_trades": len(all_trades),
+            "calmar_ratio": round(calmar, 2),
+        }
+
+        self._lsr_result = {"summary": summary, "trades": all_trades, "equity_curve": equity_curve}
+
+        if getattr(self, "save_results", True):
+            summary_id = self.pg.save_summary(summary)
+            self.pg.save_trades_batch(all_trades, summary_id)
+            self.pg.save_equity_points(equity_curve, summary_id)
 
     def _calc_summary(
         self, trades: list[dict], equity_curve: list[dict],

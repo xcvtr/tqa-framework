@@ -1,5 +1,15 @@
 # Changelog
 
+## [007] 2026-08-31
+### Added
+- Risk sweep (0.08-0.30, n=12) для LSR-CROSS
+- `scripts/sweep_risk_lsr.py` — скрипт свипа
+### Changed
+- Лучшая конфигурация @ DD≤20%: risk=0.14 → +916.5%/18.92% DD/CAGR 116.6%/год
+- Реинвест подтверждён (risk_pct от текущего equity)
+- Walk-forward на risk=0.14: Train +191.4%, Test +418.6% (OOS выживает)
+- Checkpoint: checkpoints/007-lsr-cross-risk-sweep-116pct-cagr.md
+
 ## [006] 2026-08-31
 ### Fixed
 - 10× расхождение CLI vs Python API: неполные params в walk-forward скрипте (без trail_act/trail_dist/trail_lock/sl_pct/tp_pct)

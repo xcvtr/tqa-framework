@@ -17,3 +17,6 @@ build/
 debug_*.py
 results/
 docs/examples/
+
+# ground-truth reference, not part of package
+_gt_ref/

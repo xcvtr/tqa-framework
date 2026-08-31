@@ -65,9 +65,25 @@ def build_parser() -> argparse.ArgumentParser:
     pt.add_argument("--strategy", required=True)
     pt.add_argument("--executor", default="mock",
                     choices=["mock", "binance", "alor", "mt5"])
-    pt.add_argument("--mode", default="tick",
+    pt.add_argument("--mode", default="tick", dest="paper_mode",
                     choices=["tick", "detect", "both"])
     pt.add_argument("--config", help="Path to YAML config file")
+    pt.add_argument("--ch-db", default="crypto", help="ClickHouse DB (default: crypto)")
+    pt.add_argument("--pg-url", default="", help="PG connection URL for crypto DB")
+    pt.add_argument("--dry-run", action="store_true",
+                    help="Scratch mode: use strategies_replay schema, never touch live state")
+    pt.add_argument("--replay-end", default="",
+                    help="ISO timestamp — run detect+tick up to this time (dry-run only)")
+    pt.add_argument("--scratch-prefix", default="strategies_replay",
+                    help="Schema prefix for scratch tables (default: strategies_replay)")
+    pt.add_argument("--equity", type=float, default=475.0,
+                    help="Initial equity for scratch seed (default: 475)")
+    pt.add_argument("--symbols", default="",
+                    help="Override symbols (comma-separated)")
+    pt.add_argument("--replay", default="",
+                    help="JSON file of pending events [{ts, symbol, direction} ...] for dry-run replay")
+    pt.add_argument("--replay-start", default="",
+                    help="ISO timestamp — replay start bound (default: 7 days before replay-end)")
 
     # results
     rs = sub.add_parser("results", help="Show backtest results")
@@ -273,10 +289,143 @@ def cmd_grid(args):
 
 
 def cmd_paper(args):
-    """Запустить paper trader."""
-    logger.info("Paper trader: strategy=%s executor=%s mode=%s",
-                args.strategy, args.executor, args.mode)
-    logger.info("TODO: реализовать paper trader loop")
+    """Запустить paper trader — LSR-CROSS detect+tick."""
+    from tqa_framework.engine.paper import (
+        load_config, run_detect, run_tick,
+        ensure_live, ensure_scratch, seed_scratch_state,
+        _connect_pg, load_state, DEFAULT_PG,
+    )
+
+    import pathlib
+
+    # ── Resolve YAML config ──
+    yaml_path = args.config
+    if not yaml_path:
+        # Try fallback locations
+        for candidate in [
+            pathlib.Path(__file__).resolve().parent.parent.parent.parent / "lsr_cross.strategy.yaml",
+            pathlib.Path.home() / "projects" / "TQA-crypto" / "strategies" / "lsr_cross" / "config.yaml",
+        ]:
+            if candidate.exists():
+                yaml_path = str(candidate)
+                break
+        if not yaml_path:
+            yaml_path = str(pathlib.Path(__file__).resolve().parent.parent.parent / "lsr_cross.strategy.yaml")
+
+    cfg = load_config(yaml_path)
+
+    # ── Override symbols if provided ──
+    if args.symbols:
+        cfg["symbols"] = [s.strip() for s in args.symbols.split(",")]
+
+    # ── PG connection ──
+    pg_cfg = dict(DEFAULT_PG)
+    if args.pg_url:
+        # Parse URL
+        import urllib.parse
+        parsed = urllib.parse.urlparse(args.pg_url)
+        pg_cfg["host"] = parsed.hostname or pg_cfg["host"]
+        pg_cfg["port"] = parsed.port or pg_cfg["port"]
+        pg_cfg["dbname"] = parsed.path.lstrip("/") or pg_cfg["dbname"]
+        if parsed.username:
+            pg_cfg["user"] = parsed.username
+        if parsed.password:
+            pg_cfg["password"] = parsed.password
+
+    # ── Schema selection ──
+    dry_run = args.dry_run
+    schema = args.scratch_prefix if dry_run else "strategies"
+
+    if dry_run:
+        ensure_scratch(pg_cfg, schema)
+        _seed_pg = _connect_pg(pg_cfg)
+        _seed_cur = _seed_pg.cursor()
+        _seed_cur.execute(
+            f"TRUNCATE TABLE {schema}.multi_closed_trades"
+        )
+        seed_scratch_state(
+            _seed_cur,
+            schema=schema,
+            equity=args.equity,
+            balance=args.equity,
+        )
+        _seed_pg.commit()
+        _seed_pg.close()
+        logger.info("[DRY-RUN] scratch schema=%s equity=%.2f", schema, args.equity)
+    else:
+        ensure_live(pg_cfg)
+
+    # ── Dispatch per mode ──
+    pg = _connect_pg(pg_cfg)
+    pg.autocommit = False
+    cur = pg.cursor()
+
+    try:
+        if args.replay and dry_run:
+            # Replay mode: time-travel over 1m bars, injecting pending events
+            from tqa_framework.engine.paper import run_replay
+            from datetime import datetime, timedelta, timezone
+            import json as _json
+
+            with open(args.replay) as f:
+                events = _json.load(f)
+
+            end = datetime.fromisoformat(args.replay_end.replace("Z", "+00:00")) if args.replay_end \
+                else datetime.now(timezone.utc)
+            start = datetime.fromisoformat(args.replay_start.replace("Z", "+00:00")) if args.replay_start \
+                else end - timedelta(days=7)
+
+            logger.info("--- Replay (schema=%s, %s → %s) ---", schema, start, end)
+            result = run_replay(cur, cfg, schema, events, start, end)
+            pg.commit()
+            logger.info("Replay complete: equity=%.2f trades=%d",
+                        result["equity"], len(result["trades"]))
+            for t in result["trades"]:
+                logger.info("  %s %s %s pnl=%+.2f$",
+                            t["symbol"], t["direction"], t["reason"], t["pnl_usd"])
+        elif args.paper_mode in ("detect", "both"):
+            logger.info("--- Running detect (schema=%s) ---", schema)
+            added = run_detect(cur, cfg, schema=schema)
+            pg.commit()
+            logger.info("Detect complete: %d signals added", added)
+
+        if not args.replay and args.paper_mode in ("tick", "both"):
+            logger.info("--- Running tick (schema=%s) ---", schema)
+            result = run_tick(cur, cfg, schema=schema)
+            pg.commit()
+            logger.info(
+                "Tick complete: opened=%d closed=%d equity=%.2f",
+                result["opened"], result["closed"], result["equity"],
+            )
+            if result["trades"]:
+                for t in result["trades"]:
+                    logger.info(
+                        "  %s %s %s pnl=%+.2f$ (%.2f%%)",
+                        t["symbol"], t["direction"], t["reason"],
+                        t["pnl_usd"], t["pnl_pct"] * 100,
+                    )
+    finally:
+        cur.close()
+        pg.close()
+
+    # ── Final state ──
+    pg2 = _connect_pg(pg_cfg)
+    cur2 = pg2.cursor()
+    equity, peak, balance, positions = load_state(cur2, schema)
+    cur2.close()
+    pg2.close()
+
+    print(f"\n{'=' * 60}")
+    print(f"  Paper Trader: {args.strategy}")
+    print(f"  Mode:         {args.paper_mode}")
+    print(f"  Schema:       {schema}")
+    print(f"  Equity:       {equity:,.2f}$")
+    print(f"  Peak:         {peak:,.2f}$")
+    print(f"  Balance:      {balance:,.2f}$")
+    print(f"  Positions:    {len(positions)}")
+    if dry_run:
+        print("  [DRY-RUN] scratch tables — live state untouched")
+    print(f"{'=' * 60}")
 
 
 def cmd_results(args):

@@ -34,5 +34,13 @@
 
 ## Осталось
 
-1. **Live-контур `cli paper`** (cli.py:275 — TODO-заглушка): detect → pending_signals → tick на 1m из CH, state в `strategies.multi_state`, запись в `multi_closed_trades`. Это отдельная большая задача.
+1. **✅ `cli paper` live-контур реализован** (checkpoint 012, 881fe9b): paper.py (detect→pending_signals→tick на 1m из CH, state в strategies.multi_state, max_margin_ratio, запись multi_closed_trades), cli.py wiring (--dry-run scratch schema strategies_replay, --replay time-travel), 40 pytest. Запуск:
+   ```bash
+   # live (трогает strategies.multi_state id=1 — НЕ для проверки)
+   python -m tqa_framework.engine.cli paper --strategy lsr_cross --config ~/projects/TQA-crypto/strategies/lsr_cross/config.yaml --mode both
+   # dry-run decide-if-right (scratch schema, live state untouched)
+   python -m tqa_framework.engine.cli paper --strategy lsr_cross --config .../config.yaml --dry-run --mode detect
+   # replay time-travel (впрыск pending-событий)
+   python -m tqa_framework.engine.cli paper --strategy lsr_cross --config .../config.yaml --dry-run --replay events.json --replay-start ... --replay-end ... --equity 475
+   ```
 2. Z-скоринг ddof (популяционное vs выборочное) — низкий приоритет, отложен.

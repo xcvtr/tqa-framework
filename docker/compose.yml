@@ -20,5 +20,39 @@ services:
       timeout: 3s
       retries: 5
 
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    network_mode: host
+    depends_on:
+      pg:
+        condition: service_healthy
+    environment:
+      PG_URL: "postgresql://postgres:tqa@localhost:5433/tqa"
+      CH_HOST: "10.0.0.60"
+      CH_DB: "crypto"
+    command:
+      - python3
+      - -m
+      - tqa_framework.engine.cli
+      - --ch-db
+      - crypto
+      - backtest
+      - --tickers
+      - BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT,XRPUSDT
+      - --strategy-yaml
+      - lsr_cross
+      - --tf
+      - "60"
+      - --days
+      - "365"
+      - --risk-pct
+      - "0.14"
+      - --equity
+      - "1000"
+      - --max-conc
+      - "6"
+
 volumes:
   pg-data:

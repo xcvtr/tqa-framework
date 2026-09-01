@@ -597,6 +597,19 @@ class Backtester:
                             # обычный режим (pyramid_max=1): одна позиция на символ
                             if self.pyramid_max == 1:
                                 continue
+                        # DEDUP (опционально, только если YAML просит): skip if position
+                        # already opened for this symbol on current trading day.
+                        # Включается параметром `dedup_per_day: true` — не влияет на
+                        # другие стратегии (stop_hunt, lsr_cross), у которых флаг выкл.
+                        if self.strategy_params.get("dedup_per_day", False):
+                            cur_date = bar_time[:10] if bar_time else ""
+                            if cur_date:
+                                has_today = any(
+                                    p["symbol"] == sig.symbol and p.get("entry_time", "").startswith(cur_date)
+                                    for p in positions
+                                )
+                                if has_today:
+                                    continue
                         # КОНКУРЕНЦИЯ ЗА КАПИТАЛ
                         active = [p for p in positions if not p.get("closed")]
                         used_risk = sum(p.get("_risk_amount", 0.0) for p in active)

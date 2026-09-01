@@ -215,6 +215,20 @@ def _median_vol(bars: list[dict], params: dict, state: dict) -> float:
     return float(statistics.median(vals))
 
 
+def _day_net(bars: list[dict], params: dict, state: dict) -> float:
+    """Дневной дисбаланс физлиц (MOEX OI) из last-known value ≤ ts бара.
+
+    Anti-look-ahead: значение уже присвоено бару лоадером как последний
+    известный на момент бара (не текущий незавершённый). Если day_net на
+    баре нет — возвращаем предпоследний день из истории (без look-ahead).
+    """
+    for b in reversed(bars):
+        v = b.get('day_net')
+        if v is not None:
+            return float(v)
+    return 0.0
+
+
 def _pnl_pct(bars: list[dict], params: dict, state: dict) -> float:
     """PnL % от первой позиции в state['positions'].
     Нужна для exit-условий в YAML-стратегиях (SL/TP).
@@ -243,6 +257,7 @@ _builtins = [
     ("range", _range_pct),
     ("retrace", _retrace),
     ("change", _change),
+    ("day_net", _day_net),
     ("median", _median_vol),
     ("pnl_pct", _pnl_pct),
     ("hour", _hour),

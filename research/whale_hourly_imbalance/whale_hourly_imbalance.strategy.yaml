@@ -1,0 +1,73 @@
+# WHALE HOURLY IMBALANCE — LIVE strategy config (TQA-crypto).
+# Микроструктурный сигнал: часовой дисбаланс агрессорных сделок на Binance perps
+# (aggTrades). |imb|>0.3 = «кит давит» в одну сторону → follow, вход VWAP, выход
+# VWAP следующего часа. SL 5% ОБЯЗАТЕЛЕН (хвосты до −187% без него).
+#
+# ✅ Backtest (2025 H1, 80 symbols, pool, честный forward-VWAP):
+#   Gross WR 71% / mean +34.9bp | Net (cost 35bp taker) WR 43% / −0.1bp
+#   Живёт только maker ≤15bp: WR 58%, +23,558%. Status: research (экономика на грани).
+# ⚠️ Taker-заполнение НЕ деплоить — убыточно. Только maker/топ-ликвид.
+
+strategy: whale_hourly_imbalance
+version: "1.0"
+description: |
+  Whale hourly imbalance: follow агрессорного дисбаланса на Binance USDT-M
+  aggTrades. hourly imb = (buy_vol - sell_vol)/(buy_vol + sell_vol).
+  |imb| > THR → войти по VWAP часа, выход по VWAP следующего часа.
+
+# Метрика: часовой дисбаланс из agg_trades (ClickHouse crypto, ReplacingMergeTree)
+metrics:
+  imb:
+    type: hourly_imbalance
+    params: {field: imb}
+
+signals:
+  - id: whale_long
+    priority: 1
+    when: "imb > 0.3"       # фиксированный глобальный порог (общий от пула, не per-symbol)
+    then: whale_execute
+    params:
+      direction: LONG
+      th: 0.3
+      hold_h: 1             # выход VWAP следующего часа
+      sl_pct: 0.05          # ОБЯЗАТЕЛЕН (хвосты −187% без него)
+      fill: vwap            # вход по VWAP часа сигнала
+  - id: whale_short
+    priority: 1
+    when: "imb < -0.3"
+    then: whale_execute
+    params:
+      direction: SHORT
+      th: 0.3
+      hold_h: 1
+      sl_pct: 0.05
+      fill: vwap
+
+# Стаблы (USDC/USDT пары) исключать всегда — засоряют imbalance.
+exclude:
+  syms: ["USDCUSDT", "USDTUSDT", "FDUSDUSDT", "TUSDUSDT", "PAXGUSDT"]
+
+risk:
+  base_risk: 0.03           # консервативно — экономика на грани
+  leverage: 1
+  max_pos: 5
+  dd_stop_pct: 0.20
+  max_margin_ratio: 0.6
+  comission: 0.0005         # maker 5bp (taker 35bp убыточен — НЕ ставить)
+  slippage: 0.0005
+
+# Топ-ликвидные символы (только maker-заполняемые), определяется динамически
+# из CH по объёму; здесь — ядро юниверса.
+risk_range_symbols: []
+
+data_sources:
+  - name: agg_trades
+    type: external
+    source:
+      host: "10.0.0.60"
+      port: 8123
+      database: "crypto"
+      table: "agg_trades_binance"
+    interval: "1h"
+    th: 0.3
+    hold_h: 1

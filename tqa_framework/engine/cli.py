@@ -176,12 +176,18 @@ def cmd_backtest(args):
     # ── Выбираем бэктестер ──
     # Auto-route lsr_cross to specialized backtester (event-driven 1m hi/lo sim)
     _use_lsr = args.backtester == "lsr_cross"
+    _use_whale = args.backtester == "whale"
     if _use_lsr:
         from tqa_framework.backtesters.lsr_cross import LsrCrossBacktester
         BacktesterClass = LsrCrossBacktester
         # Устанавливаем strategy_name для PG консистентности
         if not args.strategy:
             args.strategy = "lsr_cross"
+    elif _use_whale:
+        from tqa_framework.backtesters.whale import WhaleBacktester
+        BacktesterClass = WhaleBacktester
+        if not args.strategy:
+            args.strategy = "whale_hourly_imbalance"
     else:
         from tqa_framework.engine.backtester import Backtester
         BacktesterClass = Backtester

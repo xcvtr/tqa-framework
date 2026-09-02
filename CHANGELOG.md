@@ -1,5 +1,12 @@
 # Changelog
 
+## [012] 2026-09-02
+### Added
+- Чекпойнт 012: whale_hourly_imbalance M1-MTM маркировка (MARK_M=1)
+- Вердикт: research-кирпич, не live — режимная нестабильность, распад в 2026 YTD
+- Метрики: IS 2025H1 +17.5%/MDD 0.47%, OOS 2025H2 +25.3%/DD 3.78%, OOS2 2026YTD +2.4%
+- Checkpoint: checkpoints/012-whale-m1-mtm-research.md
+
 ## [008] 2026-08-31
 ### Added
 - LSR-CROSS портирован в YAML: action `lsr_execute` + mode `_run_lsr_mode()`

@@ -1,0 +1,135 @@
+# FX-7 (TQA-FX-TOP live-контур) — конфиг стратегии проекта.
+# Детект — Python-стратегия (strategies/fx7/detect.py), движок — tqa_framework.
+# Все времена в UTC. Гейты читаются engine/gates.py (единый код live=backtest).
+strategy: fx7
+version: "1.0"
+
+# Детектор — обёртка над M20 volume-profile кластерным lifecycle.
+detect:
+  module: fx7.detect
+  detector_mode: volume
+  window_days: 3
+  dom_resolution: M20
+  dom_bar_minutes: 20
+  threshold: 1.5
+  atr_break_enabled: true
+  atr_k: 0.5
+  atr_period: 72
+  max_entry_levels: 1
+
+symbols:
+  - sym: euraud
+    min_vol: 5
+    net_share: 0.10
+    hold_days: 20
+    zr: 0.005
+    session: [0, 24]
+    sell_trend_filter: sma72
+    sl_pct: 1.0
+    tp_pct: 2.0
+    direction: SELL
+    risk_w: 1.0
+  - sym: eurgbp
+    min_vol: 5
+    net_share: 0.10
+    hold_days: 40
+    zr: 0.005
+    session: [0, 24]
+    sell_trend_filter: sma72
+    sl_pct: 1.0
+    tp_pct: 2.0
+    direction: BUY
+    risk_w: 1.0
+  - sym: eurusd
+    min_vol: 5
+    net_share: 0.10
+    hold_days: 20
+    zr: 0.005
+    session: [0, 24]
+    sell_trend_filter: sma72
+    sl_pct: 1.0
+    tp_pct: 0.5
+    risk_w: 1.0
+  - sym: audusd
+    min_vol: 8
+    net_share: 0.20
+    hold_days: 40
+    zr: 0.005
+    session: [0, 24]
+    sell_trend_filter: sma72
+    sl_pct: 2.0
+    tp_pct: 2.0
+    risk_w: 1.0
+  - sym: usdcad
+    min_vol: 5
+    net_share: 0.15
+    hold_days: 30
+    zr: 0.005
+    session: [0, 24]
+    sell_trend_filter: sma72
+    sl_pct: 2.0
+    tp_pct: 2.0
+    risk_w: 1.0
+  - sym: gbpusd
+    min_vol: 5
+    net_share: 0.10
+    hold_days: 30
+    zr: 0.005
+    session: [0, 24]
+    sell_trend_filter: sma72
+    sl_pct: 2.0
+    tp_pct: 2.0
+    risk_w: 1.0
+  - sym: usdchf
+    min_vol: 3
+    net_share: 0.15
+    hold_days: 30
+    zr: 0.005
+    session: [0, 24]
+    sell_trend_filter: sma72
+    sl_pct: 1.0
+    tp_pct: 2.0
+    direction: SELL
+    risk_w: 1.0
+
+# Гейты — единый код live=backtest (engine/gates.py).
+gates:
+  session: true
+  enter_dedup_hours: 24
+  stale_price_pct: 0.3
+  cl3_n: 3
+  net: true
+  sma72_sell_trend: true
+  mom3d_threshold: 0.5
+  cluster_alive: true
+  last_profit_opposite: true
+  net_growth_factor: 1.2
+  correlation_groups:
+    jpy: [audjpy, eurjpy, gbpjpy, usdjpy]
+    usd: [audusd, eurusd, gbpusd, usdcad, usdchf]
+    eur: [euraud, eurgbp, eurjpy, eurusd]
+    aud: [audjpy, audusd, euraud]
+    gbp: [gbpjpy, gbpusd, eurgbp]
+    xau: [xauusd]
+  dir_cfg:
+    audjpy: BUY
+    euraud: SELL
+    eurgbp: BUY
+    gbpjpy: BUY
+    usdchf: SELL
+
+# Портфель / риск.
+risk:
+  max_conc: 8
+  base_risk: 1.0
+  common_pool: true
+  dd_stop_pct: 0.20
+  max_margin_ratio: 0.8
+  sl_pct: 1.5
+  comission: 0.0001
+  slippage: 0.0
+
+executor:
+  name: mt5
+  testnet: false
+  mt5_symbol_suffix: rfd

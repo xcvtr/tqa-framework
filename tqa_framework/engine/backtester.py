@@ -30,6 +30,22 @@ from tqa_framework.engine.pg_state import PGState
 logger = logging.getLogger(__name__)
 
 
+def _normalize_ts_naive(val) -> str:
+    """ISO ts → naive UTC str (YYYY-MM-DDTHH:MM:SS) для сравнения с CH datetime64.
+
+    Принимает '2020-08-31 12:35:00.000', '2026-08-31T12:35:00', с Z/+00:00.
+    Читает как UTC, strip tz → naive (идентично detect.py: pd.Timestamp(..., tz='UTC').tz_convert(None))."""
+    from datetime import datetime as _dt
+    s = str(val).strip()
+    try:
+        dt = _dt.fromisoformat(s.replace('Z', '+00:00').replace(' ', 'T'))
+    except Exception:
+        return s
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt.isoformat(sep='T')
+
+
 class Backtester:
     """Универсальный бэктестер. Работает с любой стратегией."""
 
@@ -377,14 +393,46 @@ class Backtester:
             return {"summary": {}, "trades": [], "equity_curve": []}
 
         # Загрузить внешние LSR сигналы
+        # z_score_threshold (th) из YAML/params → источник истины (live th=1.75)
+        _fg = self._read_funding_gate() if self._raw_yaml else None
+        self._funding_gate = _fg
+        z_score_threshold = float(
+            self.strategy_params.get('th')
+            or (self._raw_yaml or {}).get('params', {}).get('th')
+            or (self._raw_yaml or {}).get('data_sources', [{}])[0].get('th')
+            or 2.0
+        )
         all_external_signals = []
-        if self.ch_db == "crypto":
-            for symbol in sym_bars.keys():
+        # CROSS-режим: внешний сигнал z-кросса по LEAD, торгуем LAG (forex maker 1:1)
+        _is_cross = bool(self._raw_yaml and isinstance(self._raw_yaml, dict)
+                         and any(s.get('then') == 'cross_execute'
+                                 for s in self._raw_yaml.get('signals', [])))
+        self._is_cross_mode = _is_cross
+        if _is_cross:
+            _cross_cfg = self._raw_yaml.get('cross', {}) or {}
+            _lead = _cross_cfg.get('lead', '')
+            _th = float(_cross_cfg.get('th', 3.0) or 3.0)
+            _win = int(_cross_cfg.get('z_window', 0) or 0)
+            _minp = int(_cross_cfg.get('z_min_periods', 0) or 0)
+            if _lead:
+                # lead RAW 1m (right-labeled паритет maker) → событие z-кросса.
+                # НЕ гейтим по `_lead in sym_bars`: loader грузит lead 1m независимо от
+                # состава торгуемых тикеров (--tickers может содержать только LAG).
+                _lead_1m = load_m1_from_ch(
+                    _lead, self.days * 24, self.ch_host, self.ch_db,
+                    end_time=end_time, source=getattr(self, 'data_source', 'bars'), interval='1m')
+                signals, _lead_aA = self.load_cross_signals_from_bars(
+                    _lead, _lead_1m, _th, _win, _minp, tf=self.tf_minutes)
+                all_external_signals.extend(signals)
+                logger.info(f"CROSS: {len(signals)} сигналов z-кросса (lead={_lead}, th={_th})")
+        elif self.ch_db == "crypto":
+            for sym in sym_bars.keys():
                 # +720h warmup для z-score rolling window (как в Python lsr_cross.py)
-                signals = self.load_lsr_data(symbol, hours=self.days * 24 + 720, end_time=end_time)
+                signals = self.load_lsr_data(sym, hours=self.days * 24 + 720, end_time=end_time,
+                                             z_score_threshold=z_score_threshold)
                 if signals:
                     all_external_signals.extend(signals)
-                    logger.info(f"Загружено {len(signals)} LSR сигналов для {symbol}")
+                    logger.info(f"Загружено {len(signals)} LSR сигналов для {sym}")
 
         # ── Apply exclude syms/hours/DOW from YAML (по ИСХОДНОМУ ts события!) ──
         # Live detect.py фильтрует по ts события кросса (до ремапа на tf-бар).
@@ -425,7 +473,28 @@ class Backtester:
             except Exception as _ex:
                 logger.warning("Не удалось применить exclude фильтры из YAML: %s", _ex)
 
-        # ── REMAP: LSR event timestamps → next 5m bar timestamp ──
+        # ── FUNDING-GATE: |funding_z(sym, ts)| > FZ_TH (идентично live detect.py) ──
+        # Порт funding_z_ok из TQA-crypto/strategies/lsr_cross/detect.py 1:1:
+        # FZ_WINDOW=21, FZ_MINP=8, FZ_TH=1.0, источник CH funding_rates exchange=binance.
+        # Фильтруем по ИСХОДНОМУ ts события (до ts-remap на tf-бар), как live.
+        _fg = self._funding_gate
+        if _fg and _fg.get('enabled', False):
+            self._funding_window = int(_fg.get('window', 21))
+            self._funding_minp = int(_fg.get('min_periods', 8))
+            self._funding_th = float(_fg.get('th', 1.0))
+            _fzmap = self._load_funding_zmap(list(sym_bars.keys()))
+            _before = len(all_external_signals)
+            _kept = []
+            for _sig in all_external_signals:
+                if self._funding_z_ok(_sig.get('symbol'), _sig.get('ts', ''), _fzmap):
+                    _kept.append(_sig)
+            all_external_signals = _kept
+            logger.info(
+                "Funding-gate |z_f|>%.2f (win=%d,minp=%d): %d → %d сигналов",
+                self._funding_th, self._funding_window, self._funding_minp,
+                _before, len(all_external_signals))
+
+        # ── REMAP: external event timestamp → next 5m bar timestamp ──
         # Python simulate_trade() uses np.searchsorted(px_t5, ev_ts, side='right')
         # to find the FIRST 5m bar AFTER each LSR cross event.
         # YAML engine_detect_fn needs external signal ts to match a bar ts.
@@ -434,20 +503,22 @@ class Backtester:
         # format (2026-08-06 00:00:00.000). String comparison treats 'T' > ' ',
         # causing ALL signals on a day to map to the midnight bar. Fix: normalize.
         import bisect
-        for sig in all_external_signals:
-            sym = sig.get("symbol")
-            ts = sig.get("ts")
-            if sym and ts and sym in sym_bars:
-                bar_times = [b["ts"] for b in sym_bars[sym]]
-                # Normalize to 'T' format AND strip millis for consistent string comparison
-                # LSR: "2026-08-06 12:35:00.000" → "2026-08-06T12:35:00.000" → "2026-08-06T12:35:00"
-                ts_norm = ts.replace(" ", "T")
-                if "." in ts_norm:
-                    ts_norm = ts_norm.split(".")[0]
-                idx = bisect.bisect_right(bar_times, ts_norm)
-                if idx < len(bar_times):
-                    sig["ts"] = bar_times[idx]
-                    sig["timestamp"] = bar_times[idx]
+        # NOTE: cross mode ts уже в right-labeled maker-конвенции (1m-aligned) — НЕ ремапить.
+        if not getattr(self, '_is_cross_mode', False):
+            for sig in all_external_signals:
+                sym = sig.get("symbol")
+                ts = sig.get("ts")
+                if sym and ts and sym in sym_bars:
+                    bar_times = [b["ts"] for b in sym_bars[sym]]
+                    # Normalize to 'T' format AND strip millis for consistent string comparison
+                    # LSR: "2026-08-06 12:35:00.000" → "2026-08-06T12:35:00.000" → "2026-08-06T12:35:00"
+                    ts_norm = ts.replace(" ", "T")
+                    if "." in ts_norm:
+                        ts_norm = ts_norm.split(".")[0]
+                    idx = bisect.bisect_right(bar_times, ts_norm)
+                    if idx < len(bar_times):
+                        sig["ts"] = bar_times[idx]
+                        sig["timestamp"] = bar_times[idx]
 
         # Индекс сигналов по времени
         sym_ext_idx = {}
@@ -464,11 +535,12 @@ class Backtester:
         self.sym_ext_idx = sym_ext_idx
         self.sym_bars = sym_bars
 
-        # ── LSR-CROSS pre-computed mode: detect by YAML action ──
+        # ── LSR-CROSS / CROSS pre-computed mode: detect by YAML action ──
         if self._raw_yaml and isinstance(self._raw_yaml, dict):
             _signals = self._raw_yaml.get('signals', [])
-            if any(s.get('then') == 'lsr_execute' for s in _signals):
-                logger.info("LSR-CROSS mode detected (action=lsr_execute), running pre-compute + 1m MTM")
+            _ldr_based = any(s.get('then') in ('lsr_execute', 'cross_execute') for s in _signals)
+            if _ldr_based:
+                logger.info("External-signal mode detected (action=lsr_execute/cross_execute), running pre-compute + 1m MTM")
                 self._run_lsr_mode(sym_bars, end_time, all_external_signals)
                 if hasattr(self, '_lsr_result') and self._lsr_result:
                     logger.info(f"LSR mode complete: {self._lsr_result['summary']['total_return']}% / {self._lsr_result['summary']['mdd']}% DD / {self._lsr_result['summary']['total_trades']} trades")
@@ -777,6 +849,78 @@ class Backtester:
             "_day_net": getattr(signal, 'day_net', None),
         }
 
+    # ── Funding-gate: |funding_z(sym, ts)| > FZ_TH (порт detect.py funding_z_ok 1:1) ──
+    def _read_funding_gate(self) -> dict | None:
+        """Прочитать funding_gate блок из YAML (self._raw_yaml). None если нет."""
+        if not self._raw_yaml or not isinstance(self._raw_yaml, dict):
+            return None
+        fg = self._raw_yaml.get('funding_gate') or {}
+        if not isinstance(fg, dict):
+            fg = {}
+        if not fg.get('enabled'):
+            return None
+        return fg
+
+    def _load_funding_zmap(self, symbols: list[str]) -> dict:
+        """CH funding_rates → {sym: (ts64, z[])}, rolling z (win, minp) 1:1 detect.py."""
+        import numpy as np
+        import pandas as pd
+        if not getattr(self, '_funding_zmap_cache', None):
+            self._funding_zmap_cache = {}
+        out = self._funding_zmap_cache
+        win = getattr(self, '_funding_window', 21)
+        minp = getattr(self, '_funding_minp', 8)
+        for sym in symbols:
+            if sym in out:
+                continue
+            try:
+                q = (f"SELECT timestamp, rate FROM {self.ch_db}.funding_rates "
+                     f"WHERE symbol='{sym}' AND exchange='binance' "
+                     f"AND timestamp < toDateTime64('2100-01-01',3) "
+                     f"ORDER BY timestamp FORMAT JSONEachRow")
+                import requests as _r
+                resp = _r.get(self.ch_host, params={"query": q}, timeout=30)
+                resp.raise_for_status()
+                raw = resp.text.strip()
+                if not raw:
+                    out[sym] = (None, None)
+                    continue
+                seen = {}
+                for ln in raw.split('\n'):
+                    row = json.loads(ln)
+                    seen[row['timestamp']] = float(row['rate'])
+                ts = np.array(list(seen.keys()), dtype='datetime64[ns]')
+                rz = pd.Series(list(seen.values()), dtype=float)
+                rm = rz.rolling(win, min_periods=minp).mean()
+                rs = rz.rolling(win, min_periods=minp).std()
+                z = ((rz - rm) / rs.replace(0, np.nan)).to_numpy()
+                out[sym] = (ts, z)
+            except Exception as e:
+                logger.warning("[FZ] %s: funding load fail %s", sym, e)
+                out[sym] = (None, None)
+        return out
+
+    def _funding_z_ok(self, sym, ts_str, fzmap: dict) -> bool:
+        """1:1 порт detect.py funding_z_ok(sym, ts, require=True).
+
+        require=True (live-default): нет данных / i<0 / NaN → REJECT (False).
+        True только если |funding_z(sym, ts)| > FZ_TH."""
+        if not ts_str:
+            return False
+        entry = fzmap.get(sym)
+        if entry is None or entry[0] is None or entry[1] is None or len(entry[1]) == 0:
+            return False   # `return not require` with require=True → False
+        import numpy as np
+        ts, z = entry
+        try:
+            dt64 = np.datetime64(_normalize_ts_naive(ts_str))
+        except Exception:
+            return False
+        i = int(np.searchsorted(ts, dt64, side='right')) - 1
+        if i < 0 or i >= len(z) or np.isnan(z[i]):
+            return False   # `return not require` with require=True → False
+        return abs(z[i]) > self._funding_th
+
     def load_lsr_data(self, symbol: str, hours: int = 24, end_time: str = "", z_score_threshold: float = 2.0):
         """Загрузить данные LSR для символа из ClickHouse.
 
@@ -898,6 +1042,53 @@ class Backtester:
         except Exception as e:
             logger.warning(f"Ошибка загрузки LSR данных для {symbol}: {e}")
             return []
+
+    def load_cross_signals_from_bars(self, lead_symbol: str, lead_1m_bars: list,
+                                     zth: float = 3.0, win: int = 0, minp: int = 0, tf: int = 0):
+        """Make external CROSS events from LEAD symbol 1m bars (fx maker /tmp/fx_eur_gbp_maker.py, 1:1).
+
+        1:1 с maker: lead 1m -> pandas resample(tf).last() (RIGHT-labeled, как .resample в maker),
+        z = pct_change(lead).rolling(win, min_periods=minp).mean()/std() (rolling 30д на tf),
+        state = +1 if z>+zth, -1 if z<-zth, entry ТОЛЬКО при смене state (prev != now).
+        Направление: z>+zth -> LONG (state +1), z<-zth -> SHORT. Entry ts = RIGHT-labeled бар события
+        (совпадает с maker df.index[valid]).
+
+        Returns (signals, lead_tf) — external_signals: [{ts, timestamp, symbol:lead, direction,
+        zscore, action:'signal'}], и right-labeled lead tf close Series для сверки.
+        Торгуемая пара (lag) выбирается в YAML cross.lag / precompute.
+        """
+        import numpy as np
+        import pandas as _pd
+        if tf <= 0:
+            tf = self.tf_minutes
+        if win <= 0:
+            win = max(int(30 * 24 * 60 / tf), 20)   # 30 дней на tf
+        if minp <= 0:
+            minp = max(win // 3, 50)
+        idx = _pd.DatetimeIndex(_pd.to_datetime([b['ts'] for b in lead_1m_bars]))
+        closes = _pd.Series([b['close'] for b in lead_1m_bars], index=idx).sort_index()
+        aA = closes.resample(f'{tf}min').last().dropna()
+        r = aA.pct_change()
+        mm = r.rolling(win, min_periods=minp).mean()
+        sd = r.rolling(win, min_periods=minp).std()
+        z = ((r - mm) / sd.replace(0, np.nan)).to_numpy()
+        state = np.zeros(len(aA))
+        state[z > zth] = 1
+        state[z < -zth] = -1
+        prev = np.roll(state, 1); prev[0] = 0
+        entry = (state != 0) & (state != prev)
+        signals = []
+        for i in np.where(entry)[0]:
+            ts = str(aA.index[i])
+            signals.append({
+                'ts': ts,
+                'timestamp': ts,
+                'symbol': lead_symbol,
+                'direction': 'LONG' if state[i] == 1 else 'SHORT',
+                'zscore': float(z[i]) if not np.isnan(z[i]) else 0.0,
+                'action': 'signal',
+            })
+        return signals, aA
 
     def _check_sl_tp_trail(self, pos_dict: dict, price: float) -> str:
         """Проверить SL/TP/Trail позиции (из YAML close params).
@@ -1056,6 +1247,12 @@ class Backtester:
         self.pg.ensure_schemas()
         self.pg.ensure_tables_backtest()
 
+        # CROSS/LEAD-LAG конфиг (используется в разделах 1 и 2)
+        _is_cross = getattr(self, '_is_cross_mode', False)
+        _raw0 = self._raw_yaml or {}
+        _cross0 = (_raw0.get('cross', {}) or {}) if isinstance(_raw0, dict) else {}
+        _lag = _cross0.get('lag', '')
+
         # ── 1. 5m bars already in sym_bars; load 1m bars ──
         k5_cache = dict(sym_bars)
         k1_cache = {}
@@ -1066,11 +1263,37 @@ class Backtester:
             k1_cache[sym] = bars_1m if bars_1m else sym_bars[sym]
             logger.info(f"  {sym}: {len(k1_cache[sym])} 1m баров")
 
+        # ── 1b. Numpy caches per symbol (avoid O(events×bars) rebuild inside _lsr_execute) ──
+        import numpy as _np
+        from datetime import datetime as _dt
+        _np5_cache, _np1_cache = {}, {}
+        def _c5_ts(v):
+            return v.timestamp() if isinstance(v, _dt) else _dt.fromisoformat(str(v).replace('Z', '+00:00')).replace(tzinfo=None).timestamp()
+        for _sym, _bars in k5_cache.items():
+            _np5_cache[_sym] = (_np.array([_c5_ts(b['ts']) for b in _bars]),
+                                _np.array([b['close'] for b in _bars]))
+        for _sym, _bars in k1_cache.items():
+            _np1_cache[_sym] = (_np.array([_c5_ts(b['ts']) for b in _bars]),
+                                _np.array([b['high'] for b in _bars]),
+                                _np.array([b['low'] for b in _bars]),
+                                _np.array([b['close'] for b in _bars]))
+
+        # ── 1c. CROSS: LAG pandas right-labeled tf close (maker B[valid]/B[valid+hold]) ──
+        _lag30 = {}
+        if _is_cross and _lag and _lag in k1_cache:
+            import pandas as _pd
+            _ld = k1_cache[_lag]
+            _idx = _pd.DatetimeIndex(_pd.to_datetime([b['ts'] for b in _ld]))
+            _cl = _pd.Series([b['close'] for b in _ld], index=_idx).sort_index()
+            _a30 = _cl.resample(f'{int(getattr(self, "tf_minutes", 30))}min').last().dropna()
+            _lag30 = {str(k): float(v) for k, v in _a30.items()}
+            logger.info(f"  cross lag30 {_lag}: {len(_lag30)} right-labeled {int(getattr(self,'tf_minutes',30))}m closes")
+
         # ── 2. Get action params from YAML ──
         _raw = self._raw_yaml or {}
         _act_params = {}
         for sc in _raw.get('signals', []):
-            if sc.get('then') == 'lsr_execute':
+            if sc.get('then') in ('lsr_execute', 'cross_execute'):
                 _act_params.update(sc.get('params', {}))
         _close = _raw.get('close', {})
         for _ck in ('sl_pct', 'tp_pct', 'trail_act', 'trail_dist', 'trail_lock', 'hold_h'):
@@ -1116,12 +1339,17 @@ class Backtester:
             _m = _sym_risk.get(sym)
             return _rr_base * (float(_m) if _m else 1.0) * _lev
 
-        lsr_exec = get_action('lsr_execute')
+        lsr_exec = get_action('cross_execute' if _is_cross else 'lsr_execute')
 
         # ── 3. Pre-compute trades from external signals ──
         precomputed = []
         for sig in all_external_signals:
-            sym = sig.get('symbol')
+            lead_sym = sig.get('symbol')
+            # CROSS: сигнал по LEAD → торгуем LAG (из YAML cross.lag)
+            if _is_cross:
+                sym = _lag if _lag else lead_sym
+            else:
+                sym = lead_sym
             if sym in _excl_syms:
                 continue  # exclude.syms (SOLUSDT) — паритет detect.py
             if sym not in k5_cache or sym not in k1_cache:
@@ -1129,9 +1357,12 @@ class Backtester:
             state = {
                 'k5_cache': k5_cache[sym],
                 'k1_cache': k1_cache[sym],
+                'np5_cache': _np5_cache.get(sym),
+                'np1_cache': _np1_cache.get(sym),
+                'lag30_close': _lag30,
                 'external_signal': sig,
                 'symbol': sym,
-                'signal_id': 'lsr_execute',
+                'signal_id': 'cross_execute' if _is_cross else 'lsr_execute',
             }
             cfg = dict(_act_params)
             cfg['direction'] = 'LONG' if sig.get('direction') == 'LONG' else 'SHORT'
@@ -1225,7 +1456,7 @@ class Backtester:
                         _skip = 'max_pos'
                     elif any(a['symbol'] == p['symbol'] for a in active):
                         _skip = 'one_per_symbol'
-                    elif p['symbol'] in recent_closed_at and \
+                    elif p['symbol'] in recent_closed_at and not _is_cross and \
                             (bar_ts - recent_closed_at[p['symbol']]).total_seconds() < 7 * 86400:
                         _skip = 'recent_closed_7d'
                     if _skip:

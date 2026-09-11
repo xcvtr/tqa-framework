@@ -1,0 +1,40 @@
+# Sibling t_d2fef413's version (overwritten by t_d0e94deb 09-08 22:47). Kept for reference.
+# NOTE: its `then: execute_time_exit` is NOT a registered action -> cannot load in this
+# framework. Reproduced from disk read at 22:47; see /tmp/fx_eur_gbp_equity.json (t_d2fef413)
+# for its claimed results (n=496, CAGR 5.45%, DD 16.42%, WR 54.03%, risk0.5*lev10).
+strategy: eurgbp_gbpusd
+version: "1.0"
+metrics:
+  zscore:
+    type: zscore
+    params: {field: zscore, window_bars: 1440, min_periods: 480}
+signals:
+  - id: eurgbp_long
+    priority: 1
+    when: "zscore > 3.0"
+    then: execute_time_exit
+    params: {direction: LONG, hold_min: 60, state_change_only: true, cost_pips: 0.2}
+  - id: eurgbp_short
+    priority: 1
+    when: "zscore < -3.0"
+    then: execute_time_exit
+    params: {direction: SHORT, hold_min: 60, state_change_only: true, cost_pips: 0.2}
+exclude:
+  syms: []
+  hours: [0,1,2,3,4,5,6,7,8,9,10,11,22,23]
+  dow: []
+risk:
+  base_risk: 0.5
+  leverage: 10
+  max_pos: 1
+  dd_stop_pct: 0.20
+  max_margin_ratio: 0.8
+  comission: 0.0001
+  slippage: 0.0
+  symbols: [GBPUSD]
+honesty:
+  perm_null: true
+  median_not_mean: true
+  half_spread: true
+  train: ["2019-01-01","2023-12-31"]
+  oos: ["2024-01-01","2026-12-31"]

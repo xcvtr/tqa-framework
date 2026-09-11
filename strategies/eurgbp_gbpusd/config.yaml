@@ -1,0 +1,79 @@
+# EURGBP -> GBPUSD cross-pair monetization strategy (worker t_d0e94deb, realize in framework).
+# Signal from EXTERNAL eurgbp 30m z-score (rolling 30d mean/std, right-labeled bar close),
+# traded on gbpusd. cross_execute prices entry/exit at the LAG's pandas-30m closes (1:1 with
+# /tmp/fx_eur_gbp_maker.py 30m_maker_ny_z3). Session window = ET 06..21 (UTC 12..21) inclusive.
+#
+# Honest M1-MTM portfolio equity: entry at t (30m close of lag), exit at t+1h, sized by
+# notional = equity*base_risk*leverage, cost 0.2 pips round-trip. No SL/TP (time-dexit).
+#
+# Note: collision with sibling t_d2fef413 (same path). Its `execute_time_exit` action is not
+# registered in this framework -> its YAML cannot load; saved to config.yaml.t_d2fef413.bak.
+# This file is the functional realization.
+
+strategy: eurgbp_gbpusd
+version: "1.0"
+
+cross:
+  lead: eurgbp
+  lag: gbpusd
+  th: 3.0
+  hold_h: 1
+
+metrics:
+  zscore:
+    type: zscore
+    params: {field: zscore, window_bars: 1440, min_periods: 480}
+
+signals:
+  - id: eurgbp_long
+    priority: 1
+    when: "zscore > 3.0"
+    then: cross_execute
+    params:
+      direction: LONG
+      hold_h: 1
+      state_change_only: true
+      cost_pips: 0.2
+  - id: eurgbp_short
+    priority: 1
+    when: "zscore < -3.0"
+    then: cross_execute
+    params:
+      direction: SHORT
+      hold_h: 1
+      state_change_only: true
+      cost_pips: 0.2
+
+exclude:
+  syms: []
+  hours: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 22, 23]
+  dow: []
+
+# NOTE: sizing. M = base_risk × leverage (notional multiple). Edge is real (PF 1.26-1.28,
+# WR 53.5%, net pips > 0.2p spread) but LOW-MARGIN: max ~4.2% CAGR at DD<=20% cap.
+# At mandated default (risk 0.1/lev 1) → +0.66%/2750d (~0.09% CAGR) — essentially flat.
+# Realized config below (base 1.0 × lev 5) hits DD 18.25% <= 20% with +35.83% total.
+risk:
+  base_risk: 1.0
+  leverage: 5
+  max_pos: 1
+  dd_stop_pct: 0.20
+  max_margin_ratio: 0.8
+  comission: 0.0001
+  slippage: 0.0
+  symbols: [GBPUSD]
+
+data_sources:
+  - name: eurgbp_external
+    type: external
+    source:
+      host: "10.0.0.60"
+      port: 8123
+      database: "forex"
+      table: "bars"
+      symbol: "eurgbp"
+    interval: "30m"
+    z_window: 1440
+    th: 3.0
+    session_hours: [12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
+    session_tz: "Etc/UTC"

@@ -68,7 +68,7 @@ def load_m1_from_ch(
             high,
             low,
             close,
-            volume as volume
+            vol as volume
         FROM forex.bars
         WHERE symbol = '{symbol}'
           AND toDateTime64(toString(time), 3, 'UTC') >= {end_ts} - INTERVAL {hours} HOUR

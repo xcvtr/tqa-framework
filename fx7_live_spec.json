@@ -1,0 +1,56 @@
+{
+  "spec": "fx7_live_spec",
+  "date": "2026-09-11",
+  "tz": "UTC",
+  "mode": "read-only; prod not modified; outputs only in /tmp",
+  "current_fx7_structure": {
+    "live_loop": "engine/paper_trader.py:732 open_signals() every 20min",
+    "signal_generation": "engine/live_engine.py generate_candidates() -> engine/lifecycle.run(sym, now-3d, now): M20 volume-profile cluster detector (CH forex.dom_clean + forex.bars); returns trades[] {sym, direction, cluster_type, cluster_level, entry_price, exit_price, entry_time, exit_time, pnl_pips, hold_days, cluster_vol, swap_rate, spread_pts, pip_mult, adx_value}",
+    "cluster_state": "JSON file engine/state/clusters.json via engine/cluster_manager.py (NOT in PG)",
+    "nine_gates": {
+      "note": "applied INLINE in paper_trader.open (lines 809-952); mirrored in engine/live_gates.py as 12 pure predicates; live_gates is currently called ONLY by tester.calc(live_gates=True) — live open still duplicates them inline (checkpoint 115 'Осталось')",
+      "filters": ["existing_sym/cluster_dedup", "session", "ENTER-24h dedup", "NET (dom_clean, fail-closed)", "CL3 consecutive-loss (3)", "correlation groups (jpy/usd/eur/aud/gbp/xau)", "stale price ±0.3%", "SMA72 sell-trend", "mom3d <0.5%/3d", "dircfg per-symbol (chk.090)", "cluster_alive", "last-profit-opposite"]
+    },
+    "mt5_integration": "paper_trader.write_mt5_signals -> INSERT fx_top.mt5_signals (ENTER); engine/mt5_bridge.py execute_signal reads fx_top.mt5_signals (NOT processed, <30min), executes on MT5 (AlfaForexRU-Real *rfd), writes fx_top.mt5_account/mt5_trade_log/mt5_loss_tracker; paper_trader.sync_mt5 pulls MT5 positions back to PG state",
+    "portfolio": "FX-7 = [euraud, eurgbp, eurusd, audusd, usdcad, gbpusd, usdchf]; common pool equity/max_conc slots; MAX_CONC=6 in prod code (target 8 in spec); dircfg: audjpy BUY, euraud SELL, eurgbp BUY, gbpjpy BUY, usdchf SELL",
+    "gated_results_ckpt115": "RAW +1345.8% (WR 76.7%, 159 tr, DD 11.1%) vs GATED +130.6% (WR 78.9%, 71 tr, DD 8.0%) over 2024-07-01..2026-07-01"
+  },
+  "framework_exists": {
+    "reuse": ["engine/paper.py pattern: PG strategies.multi_state (id=1), dry-run strategies_replay.* schema, run_replay time-travel", "engine/cli.py paper mode (--executor mock|binance|alor|mt5, --dry-run, --replay)", "engine/exchange_base.py Position/Signal/ExchangeBase ABC", "engine/exchange_mock.py backtest executor", "engine/pg_state.py PGState + ensure_tables_live(schema)", "engine/risk.py calc_lot_forex/calc_contracts", "strategies/eurgbp_gbpusd/config.yaml as forex YAML template (metrics/signals/exclude/risk/data_sources, cross_execute action)"],
+    "stub_for_fx_bridge": "engine/exchange_mt5_bridge.py ExchangeMT5 is a NotImplementedError TODO-stub (excluded from IMMUTABLE) -> target implementation point",
+    "not_reusable_directly": ["paper.py crypto-specific detect/tick (long_short_ratio, klines_1m)", "detect.py MOEX resample path", "backtester.py universal portfolio (FX-7 needs rolling gates-backtest)", "strategy_engine/runtime.evaluate cannot express gate throttling (FX-7 detect stays Python)"]
+  },
+  "yaml_schema_gaps": {
+    "missing_in_schema.yaml": ["gates block (enter_dedup_hours, stale_price_pct, cl3_n, mom3d_threshold, correlation_groups, dircfg)", "per-symbol config (SYM_CONFIG: session, zr, net_share, min_vol, hold_days, sell_trend_filter, sl_pct, tp_pct, min_atr)", "detect block (detector_mode, window_days, dom_resolution M20, threshold, atr_break/atr_k/atr_period, max_entry_levels)", "portfolio: common_pool flag, max_conc (target 8), per-sym risk weights"],
+    "proposed": "strategies/fx7/config.yaml with strategy/detect/symbols/gates/risk(mt5) blocks; gates in framework engine/gates.py param'd by YAML; detect stays Python in project strategies/fx7/detect.py"
+  },
+  "code_migration_map": {
+    "stage1_executor": {
+      "from": ["TQA-FX-TOP/engine/mt5_bridge.py (execute_signal, close_position, save_account_status, load_signals, mark_processed, loss_tracker, MT5_SYMBOL_MAP)", "TQA-FX-TOP/engine/paper_trader.py (write_mt5_signals, sync_mt5, MT5_SYM_REVERSE)"],
+      "to": ["tqa_framework/engine/exchange_mt5_bridge.py (implement ExchangeMT5, TODO-stub allowed)", "strategies/fx7/bridge.py (signal write + position sync)", "NEW tests with mock MT5"]
+    },
+    "stage2_detect_and_gates": {
+      "from": ["TQA-FX-TOP/engine/live_gates.py (12 predicates)", "TQA-FX-TOP/engine/lifecycle.py + detector.py + cluster_detector.py (M20 detector)", "TQA-FX-TOP/engine/live_engine.py (generate_candidates, generate_candidates_rolling)", "TQA-FX-TOP/engine/cluster_manager.py"],
+      "to": ["tqa_framework/engine/gates.py (generic pure predicates, config-param'd)", "strategies/fx7/detect.py (detect(bars, config) -> list[Signal], pure)", "strategies/fx7/detect_all.py (detect_all + rolling)", "cluster state migrated to PG multi_state clusters jsonb"]
+    },
+    "stage3_live_contour": {
+      "from": ["tqa_framework/engine/paper.py (multi_state/dry-run/replay pattern)", "TQA-FX-TOP/engine/paper_trader.py open_signals (common pool sizing)", "TQA-FX-TOP/engine/tester.py calc(live_gates=True)"],
+      "to": ["strategies/fx7/live.py (run_detect via gates, run_tick with ExchangeMT5/MTM, open -> mt5_signals, sync)", "strategies/fx7/backtest.py (rolling backtest, ExchangeMock, strategies_replay schema)", "tqa_framework/engine/cli.py cmd_paper routing --strategy fx7"]
+    },
+    "stage4_verification": {
+      "checks": ["rolling backtest 2024-07-01..2026-07-01 reproduces checkpoint 115 (GATED ~71 tr, WR ~78.9%, +130%, MTM DD ~8%)", "live vs backtest entry parity with same gates + same PG cluster state", "dry-run end-to-end (strategies_replay untouched live tables)", "MT5 smoke (ENTER -> mt5_signals -> bridge -> sync_mt5)", "crypto LSR-CROSS regression untouched"]
+    }
+  },
+  "risks": [
+    {"id": "R1", "risk": "TZ: all UTC; framework detect.py has MSK-naive assumptions (_parse_ts)", "mitigation": "normalize every label to UTC in FX-7 detect/gates"},
+    {"id": "R2", "risk": "single-code gates NOT yet true in live (paper_trader duplicates inline; only tester calls live_gates)", "mitigation": "unify both contours on engine/gates.py during migration"},
+    {"id": "R3", "risk": "cluster state in JSON file, not PG -> rolling live (20min) vs one-shot backtest diverge", "mitigation": "persist clusters in PG multi_state jsonb, shared by both contours"},
+    {"id": "R4", "risk": "different input density live vs backtest (rolling vs one-shot); naive comparison invalid per checkpoint 115", "mitigation": "use rolling backtest (generate_candidates_rolling) + same gates + same cluster state"},
+    {"id": "R5", "risk": "CH-dependent gates (NET/mom3d/SMA72) query at entry_time; live=now vs backtest=historical skew", "mitigation": "unify CH query windows and fail-closed behavior"},
+    {"id": "R6", "risk": "strategy_engine runtime cannot express gate throttling", "mitigation": "keep FX-7 detect+gates in Python; YAML is config only"},
+    {"id": "R7", "risk": "max_conc 6 in prod vs target 8", "mitigation": "drive from YAML config; re-run verification with 8"},
+    {"id": "R8", "risk": "IMMUTABLE files (exchange_*.py except TODO-stubs, backtester.py, detect.py, pg_state.py)", "mitigation": "only exchange_mt5_bridge.py (TODO-stub) is modified; crypto live contour untouched"},
+    {"id": "R9", "risk": "forex pips/swap/spread math (pip_mult: jpy=100, xau=10, else 10000) not in framework risk.py", "mitigation": "keep pips logic in fx7 project, use shared risk.py only for USD sizing"},
+    {"id": "R10", "risk": "NET gate is fail-closed in prod (no CH -> no entry)", "mitigation": "preserve fail-closed in engine/gates.py gate_net"}
+  ]
+}

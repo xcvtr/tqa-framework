@@ -118,13 +118,15 @@ gates:
     gbpjpy: BUY
     usdchf: SELL
 
-# Портфель / риск.
+# Портфель / риск (конфиг live-контура: risk 0.47, max_conc 8, dd_stop 0.25).
 risk:
   max_conc: 8
-  base_risk: 1.0
+  base_risk: 0.47               # % от equity на сделку (common pool: /max_conc)
   common_pool: true
-  dd_stop_pct: 0.20
+  dd_stop_pct: 0.25
   max_margin_ratio: 0.8
+  sl_pips: 30
+  tp_pips: 60
   sl_pct: 1.5
   comission: 0.0001
   slippage: 0.0

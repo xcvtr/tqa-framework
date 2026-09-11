@@ -104,7 +104,7 @@ def build_parser() -> argparse.ArgumentParser:
     st_get = st_sub.add_parser("get", help="Show YAML from PG")
     st_get.add_argument("name", help="Strategy name")
 
-    st_list = st_sub.add_parser("list", help="List all strategies in PG")
+    st_sub.add_parser("list", help="List all strategies in PG")
 
     return parser
 
@@ -225,7 +225,7 @@ def cmd_backtest(args):
     print("=" * 60)
 
     # Показать путь к данным
-    print(f"\nДанные сохранены в PG: backtest.trades, .equity_curve, .summary")
+    print("\nДанные сохранены в PG: backtest.trades, .equity_curve, .summary")
 
 
 def cmd_grid(args):
@@ -294,8 +294,129 @@ def cmd_grid(args):
     print_results(results)
 
 
+def _cmd_paper_fx7(args):
+    """FX-7 live-контур: live → ExchangeMT5 + schema fx_top; dry-run → mock + scratch.
+
+    Переиспользует флаги paper-режима (--dry-run/--scratch-prefix/--mode/--pg-url).
+    Replay (rolling-backtest) для fx7 — этап 4b, здесь не маршрутизируется.
+    """
+    import pathlib
+    import urllib.parse
+
+    import psycopg2 as _pg
+
+    from tqa_framework.engine.exchange_base import ExchangeConfig
+    from tqa_framework.engine.exchange_mt5_bridge import ExchangeMT5
+    from tqa_framework.engine.exchange_mt5_bridge import DEFAULT_PG as _FX_DEFAULT_PG
+    from strategies.fx7 import live as fx7_live
+
+    # ── YAML конфиг стратегии ──
+    yaml_path = args.config
+    if not yaml_path:
+        candidate = pathlib.Path(__file__).resolve().parents[2] / "strategies" / "fx7" / "config.yaml"
+        if not candidate.exists():
+            raise SystemExit(f"[FX7] config.yaml не найден: {candidate}")
+        yaml_path = str(candidate)
+    cfg = fx7_live.load_config_yaml(yaml_path)
+
+    # ── PG ──
+    pg_cfg = dict(_FX_DEFAULT_PG)
+    if args.pg_url:
+        parsed = urllib.parse.urlparse(args.pg_url)
+        pg_cfg["host"] = parsed.hostname or pg_cfg["host"]
+        pg_cfg["port"] = parsed.port or pg_cfg["port"]
+        pg_cfg["dbname"] = parsed.path.lstrip("/") or pg_cfg["dbname"]
+        if parsed.username:
+            pg_cfg["user"] = parsed.username
+        if parsed.password:
+            pg_cfg["password"] = parsed.password
+
+    def _pg_factory():
+        return _pg.connect(
+            host=pg_cfg["host"], port=int(pg_cfg.get("port", 5432)),
+            dbname=pg_cfg["dbname"], user=pg_cfg["user"],
+            password=pg_cfg.get("password", ""), connect_timeout=5,
+        )
+
+    # ── schema: live → fx_top, dry-run → scratch (strategies_replay) ──
+    dry_run = bool(args.dry_run)
+    schema = args.scratch_prefix if dry_run else "fx_top"
+    suffix = str(((cfg.get("executor") or {}).get("mt5_symbol_suffix") or "rfd"))
+
+    exec_name = (args.executor or "mock").lower()
+    if dry_run and exec_name != "mock":
+        logger.warning("[FX7] --dry-run → executor принудительно mock (live не трогаем)")
+        exec_name = "mock"
+
+    if exec_name == "mt5":
+        ex = ExchangeMT5(ExchangeConfig(
+            name="mt5", testnet=False,
+            params={"pg": {**pg_cfg, "schema": schema},
+                    "mt5": {"server": "AlfaForexRU-Real", "symbol_suffix": suffix}},
+        ))
+        ex.ensure_schema()
+    elif exec_name == "mock":
+        ex = fx7_live.Fx7MockExecutor(
+            ExchangeConfig(name="mock", testnet=True,
+                           params={"pg": {**pg_cfg, "schema": schema},
+                                   "mt5": {"symbol_suffix": suffix}}),
+            pg_factory=_pg_factory, schema=schema)
+        ex.ensure_schema()
+    else:
+        raise SystemExit(f"[FX7] executor '{exec_name}' не поддержан для fx7 (mt5|mock)")
+
+    # ── состояние: multi_state(+clusters) + multi_closed_trades ──
+    with _pg_factory() as conn:
+        fx7_live.ensure_tables(schema=schema, conn=conn)
+        if dry_run:
+            fx7_live.seed_state(conn, schema, equity=args.equity)
+        logger.info("[FX7] schema=%s executor=%s dry_run=%s", schema, exec_name, dry_run)
+
+    if args.replay:
+        raise SystemExit("[FX7] --replay (rolling-backtest) — этап 4b; "
+                         "для fx7 используйте --mode detect|tick|both")
+
+    ctx = fx7_live.LiveContext(
+        config=cfg, executor=ex, schema=schema, pg_factory=_pg_factory,
+        symbols=[s.strip() for s in args.symbols.split(",")] if args.symbols else None,
+    )
+
+    # ── Dispatch per mode ──
+    if args.paper_mode in ("detect", "both"):
+        res_detect = fx7_live.run_detect(ctx)
+        logger.info("[FX7 detect] detected=%d entered=%d blocked=%d",
+                    res_detect.get("detected", 0), len(res_detect.get("entered", [])),
+                    len(res_detect.get("blocked", [])))
+    if args.paper_mode in ("tick", "both"):
+        res_tick = fx7_live.run_tick(ctx)
+        logger.info("[FX7 tick] opened=%d closed=%d equity=%.2f positions=%d",
+                    res_tick.get("opened", 0), res_tick.get("closed", 0),
+                    res_tick.get("equity", 0), res_tick.get("positions", 0))
+        for t in res_tick.get("trades", []):
+            logger.info("  %s %s %s pnl=%+.2f$", t["sym"], t["direction"], t["reason"], t["pnl_usd"])
+
+    # ── Final state ──
+    with _pg_factory() as conn:
+        st = fx7_live.load_state(conn, schema)
+    print(f"\n{'=' * 60}")
+    print(f"  Paper Trader: {args.strategy}")
+    print(f"  Mode:         {args.paper_mode}")
+    print(f"  Schema:       {schema}")
+    print(f"  Executor:     {exec_name}")
+    print(f"  Equity:       {st['equity']:,.2f}$")
+    print(f"  Peak:         {st['peak']:,.2f}$")
+    print(f"  Balance:      {st['balance']:,.2f}$")
+    print(f"  Positions:    {len(st['positions'])}")
+    if dry_run:
+        print("  [DRY-RUN] scratch tables — live state untouched")
+    print(f"{'=' * 60}")
+
+
 def cmd_paper(args):
-    """Запустить paper trader — LSR-CROSS detect+tick."""
+    """Запустить paper trader: LSR-CROSS (crypto) или FX-7 (forex) live-контур."""
+    if (args.strategy or "").lower() == "fx7":
+        _cmd_paper_fx7(args)
+        return
     from tqa_framework.engine.paper import (
         load_config, run_detect, run_tick,
         ensure_live, ensure_scratch, seed_scratch_state,
@@ -468,7 +589,7 @@ def cmd_results(args):
             print("=" * 60)
 
             if args.trades:
-                print(f"\nСделки (первые 20):")
+                print("\nСделки (первые 20):")
                 print(f"{'#':>4} {'Тикер':>8} {'Dir':>6} {'Entry':>10} {'Exit':>10} "
                       f"{'PnL':>10} {'Причина':>10}")
                 print("-" * 70)
@@ -517,7 +638,7 @@ def cmd_results(args):
               f"{r['win_rate']:>4.1f}% {r['profit_factor']:>5.1f} "
               f"{r['total_trades']:>7} {r['calmar_ratio']:>6.1f}")
 
-    print(f"\n  Подробнее: tqa results --id <номер>")
+    print("\n  Подробнее: tqa results --id <номер>")
 
 
 def cmd_strategy(args):

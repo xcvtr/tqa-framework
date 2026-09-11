@@ -81,12 +81,13 @@ def sync_mt5(state: dict, mt5_positions: list[dict],
     """
     out = dict(state)
     old_pos = {p["sym"]: p for p in out.get("positions", [])}
+    old_pos_ci = {str(k).lower(): v for k, v in old_pos.items()}
     closed_info = closed_info or {}
 
     pg_positions = []
     for p in mt5_positions:
         sym = reverse_sym(p.get("symbol", ""))
-        old = old_pos.get(sym, {})
+        old = old_pos_ci.get(str(sym).lower(), {})
         pg_positions.append({
             "sym": sym,
             "direction": "BUY" if str(p.get("type", "")).lower() == "buy" else "SELL",
@@ -100,13 +101,15 @@ def sync_mt5(state: dict, mt5_positions: list[dict],
             "best_pnl_pct": old.get("best_pnl_pct", 0.0),
             "cluster_level": old.get("cluster_level", 0.0),
             "pyramid_added": old.get("pyramid_added", 0),  # не сбрасывать при sync!
+            "ticket": p.get("ticket", ""),  # id MT5-позиции (для EXIT/close)
         })
 
     new_syms = {p["sym"] for p in pg_positions}
+    new_syms_ci = {str(s).lower() for s in new_syms}
     closed = list(out.get("closed_trades", []))
     equity = float(out.get("equity", 0) or 0) or 1.0
     for sym, old in old_pos.items():
-        if sym not in new_syms:
+        if str(sym).lower() not in new_syms_ci:
             info = closed_info.get(sym)
             pnl_usd = float(info[0]) if info else None
             exit_px = float(info[1]) if info else 0.0

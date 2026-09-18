@@ -929,9 +929,11 @@ class Backtester:
         try:
             import requests as _r
 
-            # Сначала загрузить LSR данные
+            # Сначала загрузить LSR данные. Читаем toUnixTimestamp (эпоха UTC — TZ-independent),
+            # а НЕ DateTime64-строку: CH без tz рендерит naive как Moscow-wall (+3h),
+            # из-за чего события креста смещались на +3h относительно канона (query_df localize→UTC).
             lsr_query = f"""
-            SELECT timestamp, ratio
+            SELECT toUnixTimestamp(timestamp) AS ts_unix, ratio
             FROM crypto.long_short_ratio
             WHERE symbol='{symbol}' AND source='bybit_global'
             AND timestamp >= toDateTime64('{end_time}', 3, 'UTC') - INTERVAL {hours} HOUR
@@ -946,13 +948,23 @@ class Backtester:
                 return []
 
             lsr_data = []
+            seen_ts = set()
+            import pandas as _pd
             for line in raw.split('\n'):
                 line = line.strip()
                 if not line:
                     continue
                 row = json.loads(line)
+                _ts_unix = row['ts_unix']
+                # dedup по unix-эпохе (паритет с каноном: drop_duplicates по timestamp в UTC).
+                # CH long_short_ratio содержит дубли (до ~3.3x) — без dedup z-серия разъезжается.
+                if _ts_unix in seen_ts:
+                    continue
+                seen_ts.add(_ts_unix)
+                # naive UTC-строка (без tz), эквивалент канона query_df.astype('datetime64[s]')
+                _ts_utc = _pd.Timestamp(_ts_unix, unit='s', tz='UTC').tz_localize(None).strftime('%Y-%m-%d %H:%M:%S')
                 lsr_data.append({
-                    'timestamp': row['timestamp'],
+                    'timestamp': _ts_utc,
                     'ratio': row['ratio']
                 })
 

@@ -565,9 +565,10 @@ def run_detect(cur, cfg: dict, schema: str = "strategies",
         if sym in recent_closed:
             continue
 
-        cur_pos = len([p for p in positions if p.get("strategy") == "lsr_cross"])
-        if cur_pos + len(pending) >= max_pos:
-            break
+        # Ёмкость очереди: не обрываем разбор батча (break терял сигналы, стоящие позже по времени).
+        if len(pending) >= max_pos:
+            logger.warning("[QUEUE-FULL] %s: queue %d >= %d", sym, len(pending), max_pos)
+            continue
 
         ts_unix = float(ts_val) if not isinstance(ts_val, (str, datetime)) else (
             ts_val.timestamp() if isinstance(ts_val, datetime) else
@@ -649,6 +650,8 @@ def run_tick(cur, cfg: dict, schema: str = "strategies",
     dd_stop_pct = cfg["dd_stop_pct"]
     margin_ratio = cfg["max_margin_ratio"]
     pyr_add = cfg["pyr_add"]
+    # Срок жизни сигнала в очереди (синхронно с live tick.py): просроченный сигнал снимается.
+    pending_max_age_h = float(cfg.get("pending_max_age_h") or 12.0)
 
     closed_trades = []
 
@@ -660,11 +663,24 @@ def run_tick(cur, cfg: dict, schema: str = "strategies",
             kept_pending.append(s)
             continue
         sym = s["symbol"]
+        try:
+            age_h = (now - datetime.fromtimestamp(float(s.get("ts")), tz=timezone.utc)).total_seconds() / 3600.0
+        except (TypeError, ValueError, OSError):
+            age_h = 0.0
+        if age_h > pending_max_age_h:
+            logger.warning("[EXPIRE] %s: signal age %.1fh > %.0fh", sym, age_h, pending_max_age_h)
+            continue
         px = last_close.get(sym)
         if not px:
             kept_pending.append(s)
             continue
-        if sym in lsr_syms or len([p for p in positions if p.get("strategy") == "lsr_cross"]) >= max_pos:
+        if sym in lsr_syms:
+            continue
+        if len([p for p in positions if p.get("strategy") == "lsr_cross"]) >= max_pos:
+            # Слотов нет: сигнал НЕ теряем — вернётся в очередь и откроется, когда слот освободится
+            # (или истечёт по pending_max_age_h). Раньше здесь стоял «continue» → сигнал пропадал.
+            kept_pending.append(s)
+            logger.warning("[QUEUE] %s: all %d slots busy — signal stays pending", sym, max_pos)
             continue
         risk = base_risk * sym_risk.get(sym, 1.0)
         notional = equity * risk * lev
@@ -673,7 +689,9 @@ def run_tick(cur, cfg: dict, schema: str = "strategies",
             p.get("margin", 0) for p in positions if p.get("strategy") == "lsr_cross"
         )
         if total_margin + margin > equity * margin_ratio:
-            logger.warning("[MARGIN-LIMIT] %s: margin %.0f > %.0f",
+            # Маржа занята: сигнал тоже НЕ теряем — ждём освобождения маржи/истечения срока.
+            kept_pending.append(s)
+            logger.warning("[MARGIN-LIMIT] %s: margin %.0f > %.0f — signal stays pending",
                            sym, total_margin + margin, equity * margin_ratio)
             continue
         positions.append({

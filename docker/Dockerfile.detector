@@ -1,0 +1,20 @@
+FROM python:3.11-slim
+
+RUN pip install numpy clickhouse-connect psycopg2-binary
+
+# Создаем рабочую директорию
+WORKDIR /app
+
+# Копируем необходимые компоненты для detector
+COPY tqa_m/connector/exchange_base.py ./tqa_m/connector/exchange_base.py
+COPY tqa_m/data/ ./tqa_m/data/
+COPY tqa_m/state/ ./tqa_m/state/
+COPY strategies/trend_sma/detect.py ./strategies/trend_sma/detect.py
+COPY strategies/trend_sma/data_provider.py ./strategies/trend_sma/data_provider.py
+COPY scripts/detector_cli.py ./scripts/detector_cli.py
+
+# Установка PYTHONPATH
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+CMD ["python", "scripts/detector_cli.py", "check"]

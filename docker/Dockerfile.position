@@ -1,0 +1,17 @@
+FROM python:3.11-slim
+
+RUN pip install numpy clickhouse-connect psycopg2-binary
+
+# Создаем рабочую директорию
+WORKDIR /app
+
+# Копируем все необходимые компоненты для position
+COPY tqa_m/ ./tqa_m/
+COPY strategies/trend_sma/ ./strategies/trend_sma/
+COPY scripts/position_cli.py ./scripts/position_cli.py
+
+# Установка PYTHONPATH
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+CMD ["python", "scripts/position_cli.py", "--mode", "paper", "--tickers", "MN"]

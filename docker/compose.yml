@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  detector:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.detector
+    image: tqa-m:detector
+    restart: unless-stopped
+    environment:
+      - CH_HOST=${CH_HOST:-10.0.0.60}
+      - CH_PORT=${CH_PORT:-8123}
+      - CH_DB=${CH_DB:-moex}
+      - PG_HOST=${PG_HOST:-10.0.0.60}
+      - PG_PORT=${PG_PORT:-5432}
+      - PG_DB=${PG_DB:-moex}
+      - PG_USER=${PG_USER:-postgres}
+    command: python scripts/detector_cli.py scan --tickers MN --dry-run
+
+  loader:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.loader
+    image: tqa-m:loader
+    restart: unless-stopped
+    environment:
+      - CH_HOST=${CH_HOST:-10.0.0.60}
+      - CH_PORT=${CH_PORT:-8123}
+      - CH_DB=${CH_DB:-moex}
+    command: python scripts/loader_cli.py --loop 60
+
+  position:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.position
+    image: tqa-m:position
+    restart: unless-stopped
+    environment:
+      - CH_HOST=${CH_HOST:-10.0.0.60}
+      - CH_PORT=${CH_PORT:-8123}
+      - CH_DB=${CH_DB:-moex}
+      - PG_HOST=${PG_HOST:-10.0.0.60}
+      - PG_PORT=${PG_PORT:-5432}
+      - PG_DB=${PG_DB:-moex}
+      - PG_USER=${PG_USER:-postgres}
+    command: python scripts/position_cli.py --mode paper --tickers MN

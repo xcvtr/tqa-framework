@@ -6,6 +6,19 @@
 - Champion обновлён: **+160.7%, DD 14.86%, 181 сделка** (risk 0.020, triple swap)
 - Checkpoint: checkpoints/001-trend-sma-xau-limit-order-opt.md
 
+## [20261120_fx_verdict] 2026-11-20
+### Conclusion
+- Протестированы 4 подходы (canal, cross-pair lag, momentum, усилители) на честном OOS
+- Ни один не дал стабильного ROI>20%/год при M1 MDD<15%
+- Canal: IS 2025 +32% → OOS 2026 −11% (развал)
+- Lag eurgbp→gbpusd: спред съедает (222% от gross); честно +11.7%/5.6%
+- Momentum USDJPY z3.0: OOS +34.6% но IS ~0 → перефит
+- Вывод: FX intraday потолок ~10-15%/год при жёстком M1<15%; «сотни %» = перефит/артефакты
+- Checkpoint: checkpoint/20261120_fx_verdict.md
+
+## [20261120_ir_canal_rejected] 2026-11-20
+- Canal mean-reversion отклонён: OOS 2026 развалился (GBPUSD −11%, EURUSD −16%)
+
 ## [20261120_canal] 2026-11-20
 ### Added
 - Canal strategy (z-score mean-reversion) — новый подход для FOREX

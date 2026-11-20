@@ -1,0 +1,3 @@
+INFO:tqa_f.runner:Warmup: load from 2017-09-15, trade starts 2019-01-01
+INFO:tqa_f.runner:xauusd: 2738978 M1 bars, 548441 5m bars
+INFO:tqa_f.runner:Timeline: 2437 trading days (2019-01-01 → 2026-11-17)

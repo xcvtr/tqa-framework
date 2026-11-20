@@ -60,7 +60,7 @@ def run_cfg(md: MarketData, ticker: str, fast: int, slow: int, ma: str,
                  params_by_ticker={ticker: {'sma_fast': fast, 'sma_slow': slow, 'ma_type': ma}},
                  trailing_params={'trail_mode': 'trend_sma', 'stop_loss': sl,
                                   'activation': arm, 'trail': trail, 'oi_pyramid_max': 0},
-                 broker=BrokerSim(commission=3.5, slippage_in=0.6, slippage_out=0.6))
+                 broker=BrokerSim(commission=0.0, slippage_in=0.0, slippage_out=0.0))
     st = State(eq0)
     run_days(md, st, cfg, dates)
     force_close(md, st, cfg)

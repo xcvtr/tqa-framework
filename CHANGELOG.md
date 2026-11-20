@@ -1,3 +1,11 @@
+## [001] 2026-11-20
+### Changed
+- Тройной своп среда→четверг реализован (engine.py close-блок): `swap × (nights + triple_nights×2)`
+- TRIZ-патчи (site-size, ATR-гейт, ratchet) удалены — отклонены по ROI/DD
+- Спека расширена до 46 инструментов (forex_specs.py), починен QUOTE_MAP
+- Champion обновлён: **+160.7%, DD 14.86%, 181 сделка** (risk 0.020, triple swap)
+- Checkpoint: checkpoints/001-trend-sma-xau-limit-order-opt.md
+
 ## [20261120_canal] 2026-11-20
 ### Added
 - Canal strategy (z-score mean-reversion) — новый подход для FOREX

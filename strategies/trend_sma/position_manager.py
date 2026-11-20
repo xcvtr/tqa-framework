@@ -127,6 +127,7 @@ class PositionManager:
         sl_pct = float(tr.get('stop_loss', 1.5)) / 100.0          # 0.015
         trail_pct = float(tr.get('trail', 1.5)) / 100.0           # 0.015
         arm_pct = float(tr.get('activation', 2.0)) / 100.0        # 0.02
+        lock_pct = float(tr.get('lock_pct', 0.0)) / 100.0         # 0.0 = no ratchet
         pyr_add = float(tr.get('oi_pyramid_add', 0.3))
         pyr_step = float(tr.get('oi_pyramid_thr', 0.01))
         pyr_max = int(pos.trailing_params.get('oi_pyramid_max', 2))
@@ -201,14 +202,21 @@ class PositionManager:
             pos._best_price = prc
 
         # ── Трейл: arm при движении >=arm_pct от входа (close), затем трейл от пика
+        #     Ratchet lock: если lock_pct > 0, стоп не ниже entry ± lock_pct
         mv = (prc - entry) / entry if pos.direction == 'long' else (entry - prc) / entry
         if mv >= arm_pct:
             pos._trend_arm = True
         if pos._trend_arm:
-            if pos.direction == 'long' and prc <= pos._best_price * (1.0 - trail_pct):
-                return self.executor._close_market(pos, prc, 'trailing_tp', volume)  # PnL по close
-            if pos.direction == 'short' and prc >= pos._best_price * (1.0 + trail_pct):
-                return self.executor._close_market(pos, prc, 'trailing_tp', volume)
+            if pos.direction == 'long':
+                _ratchet_stop = entry * (1.0 + lock_pct) if lock_pct > 0 else 0
+                _trail_stop = pos._best_price * (1.0 - trail_pct)
+                if prc <= max(_ratchet_stop, _trail_stop):
+                    return self.executor._close_market(pos, prc, 'trailing_tp', volume)
+            if pos.direction == 'short':
+                _ratchet_stop = entry * (1.0 - lock_pct) if lock_pct > 0 else float('inf')
+                _trail_stop = pos._best_price * (1.0 + trail_pct)
+                if prc >= min(_ratchet_stop, _trail_stop):
+                    return self.executor._close_market(pos, prc, 'trailing_tp', volume)
 
         return 0.0
 

@@ -97,6 +97,8 @@ def main():
     parser.add_argument('--sl-pct', type=float, default=1.5)
     parser.add_argument('--trail-pct', type=float, default=1.5)
     parser.add_argument('--arm-pct', type=float, default=2.0)
+    parser.add_argument('--lock-pct', type=float, default=0.0,
+                        help='Ratchet stop: стоп не выше entry±lock_pct от пика; 0=выкл')
     parser.add_argument('--no-pyramid-flag', action='store_true', default=True)
     args = parser.parse_args()
 

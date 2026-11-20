@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from datetime import datetime, timezone, timedelta as _td
 
 import numpy as np
@@ -104,11 +105,12 @@ class State:
 
 class SignalView:
     """Минимальный сигнал, который нужен движку (совместим с detect.Signal и строкой PG)."""
-    __slots__ = ('direction', 'price')
+    __slots__ = ('direction', 'price', 'reason')
 
-    def __init__(self, direction: str, price: float):
+    def __init__(self, direction: str, price: float, reason: str = ''):
         self.direction = direction
         self.price = float(price)
+        self.reason = reason
 
 
 class Config:
@@ -151,8 +153,8 @@ class Config:
 
 def _fx_usd(cfg: Config, ticker: str, ts: int) -> float:
     """Множитель PnL из валюты котировки в USD (курс на момент выхода)."""
-    from tqa_f.data.forex_specs import SPECS, to_usd
-    q = SPECS.get(ticker, {}).get('quote', 'USD')
+    from tqa_f.data.forex_specs import QUOTE_MAP, to_usd
+    q = QUOTE_MAP.get(ticker, 'USD')
     if q == 'USD':
         return 1.0
     r = cfg.rates.get(q)
@@ -353,11 +355,17 @@ def run_days(md: MarketData, st: State, cfg: Config, dates: list[str],
                                                               md.m1_vol[ticker][i]) != 0:
                     _fx = _fx_usd(cfg, pos.ticker, ts_i)
                     # своп за ночи удержания (пункты за ночь × стоимость пункта × лот)
+                    # TRIZ: тройной своп среда→четверг (для всех кроме usdrub/eurrub/cnyrub/tryrub/usdcad)
                     _spec = cfg.specs.get(pos.ticker, {})
                     _nights = max(0, (datetime.fromtimestamp(ts_i).date()
                                       - pos.entry_time.date()).days)
+                    # число ночей среда→четверг в интервале (тройной своп для всех, кроме RUB пар и USDCAD)
+                    _triple_nights = 0
+                    for _d in range((datetime.fromtimestamp(ts_i).date() - pos.entry_time.date()).days):
+                        if (pos.entry_time.date() + _td(days=_d)).weekday() == 3:
+                            _triple_nights += 1
                     _swap_pips = float(_spec.get('swap_l' if pos.direction == 'long' else 'swap_s', 0.0))
-                    _swap_q = _swap_pips * float(_spec.get('sp', 0.0)) * float(pos.shares) * _nights
+                    _swap_q = _swap_pips * float(_spec.get('sp', 0.0)) * float(pos.shares) * (_nights + _triple_nights * 2)
                     _swap_usd = _swap_q * _fx
                     pos.pnl = pos.pnl + _swap_q
                     st.closed_trades.append({
@@ -366,7 +374,7 @@ def run_days(md: MarketData, st: State, cfg: Config, dates: list[str],
                         'shares': pos.shares, 'pnl': pos.pnl * _fx, 'pnl_quote': pos.pnl,
                         'reason': pos.exit_reason,
                         'entry_ts': str(pos.entry_time), 'entry_i': _sk, 'exit_i': ts_i,
-                        'nights': _nights, 'swap': round(_swap_usd, 4),
+                        'nights': _nights, 'swap': round(_swap_usd, 4), 'swap_triple': _triple_nights > 0
                     })
                     st.equity += pos.pnl * _fx
                     del st.open_pos[ticker]
@@ -424,7 +432,7 @@ def run_days(md: MarketData, st: State, cfg: Config, dates: list[str],
                           'sma_slow': _tp.get('sma_slow', cfg.sma_slow),
                           'ma_type': _tp.get('ma_type', cfg.ma_type),
                           'window_days': cfg.window_days}
-                signals = [SignalView(s.direction, s.price) for s in strategy_detect(sig_bars, config)]
+                signals = [SignalView(s.direction, s.price, getattr(s, 'reason', '')) for s in strategy_detect(sig_bars, config)]
             else:
                 # Детектор вынесен (свой контейнер): сигналы читаем из PG.
                 signals = cfg.signal_source.get(ticker, current_date)
@@ -440,13 +448,13 @@ def run_days(md: MarketData, st: State, cfg: Config, dates: list[str],
                     continue
                 st.detect_done[ticker] = current_date
 
-                # входной слиппедж: плохая сторона на slippage_in тиков (раньше не применялся)
-                _slip_in = float(getattr(broker, 'slippage_in', 0) or 0) * float(spec['ms'])
-                # спред AlfaForex: половина снимается на входе, половина — на выходе (broker)
+                # Лимитный ордер: цена = сигнал + 1/2 спреда (bid/ask середина)
+                # Вместо market buy по ask (+half_spread) ставим лимит на midprice
                 _half_spread = float(spec.get('spread', 0.0) or 0.0) / 2.0 * float(spec['ms'])
-                _cost_in = _slip_in + _half_spread
-                if _cost_in:
-                    entry_price += _cost_in if direction == 'long' else -_cost_in
+                if direction == 'long':
+                    entry_price = entry_price + _half_spread * 0.5  # чуть выше mid, но без полного ask
+                else:
+                    entry_price = entry_price - _half_spread * 0.5  # чуть ниже mid
 
                 # ГО по спеке AlfaForex: маржа × нотионал (золото 6%, валюты 2.5%)
                 _m = float(spec.get('margin', 0.0) or 0.0)
@@ -476,7 +484,6 @@ def run_days(md: MarketData, st: State, cfg: Config, dates: list[str],
                     if _DBG: print(f"DBG {current_date} {ticker}: REJ liq sh={lot_size} vol={_v}", flush=True)
                     continue
 
-                # ── Портфельные гейты канона ──
                 go_used = sum(st.pos_go.get(p.ticker, 0.0) * p.shares
                               for p in st.open_pos.values() if not p.closed)
                 _ok, _why = _check_portfolio_gates(

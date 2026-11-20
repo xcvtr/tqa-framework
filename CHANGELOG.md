@@ -1,3 +1,20 @@
+## [20261120_canal] 2026-11-20
+### Added
+- Canal strategy (z-score mean-reversion) — новый подход для FOREX
+- EURJPY 8H 5× +1671%/M1 13.1% ✅ (top find)
+- EURJPY 6H 5× +1501%/12.8% ✅
+- TF×hold sweep — full table above 95% ROI/MDD
+- Checkpoint: checkpoint/20261120_ir_canal.md
+
+### Results
+- **Top single**: EURJPY 8H h6 r5× ROI +1671%, M1 MDD 13.1%, WR 59.7%, 380 trades
+- **Portfolio**: EURJPY+USDJPY 4.5× ROI +119.8%/M1 14.5%
+- CAGR ~+400%/год
+
+### Fixed
+- Старые script'ы: pnl double-count, w=48 lookahead, SL=1.5% too tight
+- tf_hold_sweep.py: tuple access in SPECS
+
 ## [20261119] 2026-11-19
 ### Added
 - IR strategy optimization: trailing SL code integration, ticker selection (audusd→audjpy)

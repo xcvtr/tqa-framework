@@ -11,7 +11,7 @@ import logging
 import sys
 import time
 
-from tqa_m.data.roll_loader import CANON, extend
+from tqa_f.data.roll_loader import CANON, extend
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 log = logging.getLogger('loader')

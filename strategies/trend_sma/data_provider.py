@@ -1,90 +1,108 @@
-"""Data provider для tqa-m MOEX: загрузка M1 bars из CH mt5_roll.
+"""Data provider tqa-f: M1 бары форекса из CH forex.bars.
 
-Соответствует load_bars() из TQA-MOEX-futures-framework/strategies/common/backtest.py
-для source='roll'. Читаем напрямую ClickHouse, возвращаем list[dict] как в каноне.
+Контракт времени (проект TQA-FX-TOP, доказан 2026-10-20): таблица forex.bars
+неоднородна — история (до 2026-08-10) хранится как истинный UTC − 2 ч,
+live (с 2026-08-10) — истинный UTC. Здесь приводим всё к истинному UTC,
+дальше по проекту время везде UTC (стандарт tqa-f).
 
-Формат бара: {ts, opn, hi, lo, prc, vol} — как в old backtest.py строка 289-290.
+Формат бара — как у tqa-m: {ts, opn, hi, lo, prc, vol}, ts = naive UTC.
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone, timedelta as _td
+import os
+from datetime import datetime, timedelta
 
 import clickhouse_connect as cc
 
-log = logging.getLogger("tqa_m.data")
+log = logging.getLogger('tqa_f.data')
+
+CH_HOST = '10.0.0.64'
+CH_PORT = 8123
+CH_DB = 'forex'
+TABLE = os.environ.get('FOREX_BARS_TABLE', 'forex.bars')
+
+# шов: до этой даты stored = true_utc − 2ч
+SEAM = datetime(2026, 8, 10)
 
 
-def ch_client(host='10.0.0.60', port=8123, database='moex'):
-    """ClickHouse connect."""
+def ch_client(host=CH_HOST, port=CH_PORT, database=CH_DB):
     return cc.get_client(host=host, port=port, database=database)
 
 
-def load_ticker_bars(
-    ticker: str,
-    start: str = '2024-08-01',
-    end: str | None = None,
-    keep_dup_min: bool = False,
-) -> list[dict]:
-    """Загрузить M1 бары тикера из CH moex.mt5_roll (как canonical bt).
-    
-    Args:
-        ticker: символ (CM, AL, SV, ...)
-        start: YYYY-MM-DD начала прогона
-        end: YYYY-MM-DD конца прогона (None = сегодня)
-        keep_dup_min: True = не дедуп минуты (старое поведение); False = берём последнюю строку минуты
-    
-    Returns:
-        [{ts, opn, hi, lo, prc, vol}, ...] — sorted по ts ascending
+def _to_true_utc(ts: datetime) -> datetime:
+    """stored-эпоха -> истинный UTC (naive на выходе)."""
+    naive = ts.replace(tzinfo=None) if ts.tzinfo is not None else ts
+    return naive + timedelta(hours=2) if naive < SEAM else naive
+
+
+def _is_session_tick(ts: datetime) -> bool:
+    """Отсечь бары вне торговой недели (сб целиком, вс до 21:00, пт после 21:00 UTC)."""
+    wd = ts.weekday()
+    if wd == 5:
+        return False
+    if wd == 6 and ts.hour < 21:
+        return False
+    if wd == 4 and ts.hour >= 21:
+        return False
+    return True
+
+
+def load_ticker_bars(ticker: str, start: str = '2024-01-01', end: str | None = None,
+                     drop_flat: bool = False) -> list[dict]:
+    """M1 бары тикера, истинный UTC, без дублей минуты.
+
+    start/end — даты истинного UTC (YYYY-MM-DD). Окно запроса расширено на ±1 день,
+    т.ч. сдвиг эпохи применяется после чтения.
+
+    CH forex.bars stores symbols in lowercase (LowCardinality(String)),
+    поэтому тикер приводится к нижнему регистру перед запросом.
     """
-    tbl = 'moex.mt5_roll'
+
+    # CH forex.bars stores symbols in lowercase (LowCardinality(String))
+    ticker = ticker.lower()
+
     if end is None:
-        end = datetime.now(timezone(_td(hours=8))).strftime('%Y-%m-%d')
-    
-    where = f"WHERE ticker = '{ticker}' AND bt >= toDateTime('{start} 00:00:00') AND bt <= toDateTime('{end} 23:59:59')"
-    
-    if keep_dup_min:
-        sql = f"SELECT bt, opn, hi, lo, prc, vol FROM {tbl} {where} ORDER BY bt"
-    else:
-        sql = f"""
-            SELECT bt, opn, hi, lo, prc, vol FROM (
-                SELECT bt, opn, hi, lo, prc, vol FROM {tbl} {where}
-                ORDER BY bt DESC LIMIT 1 BY toStartOfMinute(bt)
-            ) ORDER BY bt
-        """
-    
+        end = datetime.utcnow().strftime('%Y-%m-%d')
+    st_q = (datetime.strptime(start, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
+    en_q = (datetime.strptime(end, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
+    sql = f"""SELECT time, open, high, low, close, vol FROM {TABLE}
+        WHERE symbol = '{ticker}'
+          AND time >= toDateTime('{st_q} 00:00:00') AND time <= toDateTime('{en_q} 23:59:59')
+        ORDER BY time"""
     try:
         client = ch_client()
-        result = client.query(sql)
-        rows = result.named_results()
+        rows = client.query(sql).named_results()
         client.close()
-    except Exception as e:
-        log.error("load_ticker_bars %s error: %s", ticker, e)
+    except Exception as e:  # сеть/CH
+        log.error('load_ticker_bars %s: %s', ticker, e)
         return []
-    
-    # Все бары mt5_roll как в каноне (old backtest.py source='roll'):
-    # БЕЗ фильтрации часов — канон входит по ПЕРВОМУ бару дня по МСК (может быть 07:05, 09:05, ...).
-    # Раньше этот фильтр вырезал 07-09 МСК → первый бар дня всегда 10:00 → другие цены/дни входа.
-    return [
-        {
-            'ts': row['bt'],
-            'opn': float(row['opn']),
-            'hi': float(row['hi']),
-            'lo': float(row['lo']),
-            'prc': float(row['prc']),
-            'vol': float(row.get('vol', 0)),
-        }
-        for row in rows
-    ]
+
+    st_dt = datetime.strptime(start, '%Y-%m-%d')
+    en_dt = datetime.strptime(end, '%Y-%m-%d') + timedelta(days=1)
+    out, seen = [], set()
+    for r in rows:
+        utc = _to_true_utc(r['time'])
+        if utc < st_dt or utc >= en_dt or not _is_session_tick(utc):
+            continue
+        minute = utc.replace(second=0, microsecond=0)
+        if minute in seen:
+            continue
+        o, h, lo, cl = float(r['open']), float(r['high']), float(r['low']), float(r['close'])
+        if drop_flat and (o == 0 or h == 0 or lo == 0 or cl == 0):
+            continue
+        seen.add(minute)
+        out.append({'ts': minute, 'opn': o, 'hi': h, 'lo': lo, 'prc': cl, 'vol': float(r['vol'] or 0)})
+    return out
 
 
 def load_multiple_tickers(tickers: list[str], start: str, end: str | None = None) -> dict[str, list[dict]]:
-    """Загрузить несколько тикеров. Возвращает {ticker: [bars]}."""
     result = {}
     for ticker in tickers:
         bars = load_ticker_bars(ticker, start, end)
         if bars:
             result[ticker] = bars
         else:
-            log.warning("load_multiple_tickers: нет данных для %s", ticker)
+            log.warning('load_multiple_tickers: нет данных для %s', ticker)
     return result

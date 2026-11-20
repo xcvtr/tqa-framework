@@ -1,0 +1,67 @@
+[
+ {
+  "ticker": "eurjpy",
+  "direction": "long",
+  "entry_price": 183.821,
+  "exit_price": 183.687,
+  "shares": 1.0,
+  "pnl": -83.59208409711572,
+  "pnl_quote": -13407.0,
+  "reason": "trailing_tp",
+  "entry_ts": "2026-04-05 23:05:00",
+  "entry_i": 1775401500,
+  "exit_i": 1777519440
+ },
+ {
+  "ticker": "eurjpy",
+  "direction": "long",
+  "entry_price": 185.75300000000001,
+  "exit_price": 182.9547,
+  "shares": 1.0,
+  "pnl": -1762.6718821847226,
+  "pnl_quote": -279836.5,
+  "reason": "stop_loss",
+  "entry_ts": "2026-05-31 23:05:00",
+  "entry_i": 1780239900,
+  "exit_i": 1785381300
+ },
+ {
+  "ticker": "eurjpy",
+  "direction": "short",
+  "entry_price": 178.075,
+  "exit_price": 180.7521,
+  "shares": 1.0,
+  "pnl": -1700.1625737456102,
+  "pnl_quote": -267719.5,
+  "reason": "stop_loss",
+  "entry_ts": "2026-09-13 23:05:00",
+  "entry_i": 1789311900,
+  "exit_i": 1789688340
+ },
+ {
+  "ticker": "eurjpy",
+  "direction": "short",
+  "entry_price": 180.344,
+  "exit_price": 177.706,
+  "shares": 1.0,
+  "pnl": 1665.2336944170895,
+  "pnl_quote": 263793.0,
+  "reason": "trailing_tp",
+  "entry_ts": "2026-09-20 23:05:00",
+  "entry_i": 1789916700,
+  "exit_i": 1793722860
+ },
+ {
+  "ticker": "eurjpy",
+  "direction": "short",
+  "entry_price": 176.595,
+  "exit_price": 175.327,
+  "shares": 1.0,
+  "pnl": 787.4268015899886,
+  "pnl_quote": 125593.0,
+  "reason": "force_close",
+  "entry_ts": "2026-11-08 23:05:00",
+  "entry_i": 1794150300,
+  "exit_i": 1794931140
+ }
+]

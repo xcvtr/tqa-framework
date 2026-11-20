@@ -1,8 +1,8 @@
 """State-journal: DDL и API на месте, бар в state не попадает."""
 import sys
-sys.path.insert(0, '/home/user/projects/tqa-m')
+sys.path.insert(0, '/home/user/projects/tqa-f')
 
-from tqa_m.state.pg_state import DDL_STATE, DDL_CLOSED, PaperDB, load_ticker_specs_pg
+from tqa_f.state.pg_state import DDL_STATE, DDL_CLOSED, PaperDB, load_ticker_specs_pg
 
 
 def test_journal_tables():

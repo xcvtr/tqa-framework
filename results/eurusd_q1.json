@@ -1,0 +1,66 @@
+[
+ {
+  "ticker": "eurusd",
+  "direction": "short",
+  "entry_price": 1.03623,
+  "exit_price": 1.0519,
+  "shares": 1.0,
+  "pnl": -1573.34,
+  "pnl_quote": -1573.34,
+  "reason": "stop_loss",
+  "entry_ts": "2025-01-02 06:35:00",
+  "entry_i": 1735770900,
+  "exit_i": 1737705060
+ },
+ {
+  "ticker": "eurusd",
+  "direction": "short",
+  "entry_price": 1.02482,
+  "exit_price": 1.0403,
+  "shares": 1.0,
+  "pnl": -1556.23,
+  "pnl_quote": -1556.23,
+  "reason": "stop_loss",
+  "entry_ts": "2025-02-02 23:05:00",
+  "entry_i": 1738508700,
+  "exit_i": 1738711560
+ },
+ {
+  "ticker": "eurusd",
+  "direction": "short",
+  "entry_price": 1.03055,
+  "exit_price": 1.0461,
+  "shares": 1.0,
+  "pnl": -1564.82,
+  "pnl_quote": -1564.82,
+  "reason": "stop_loss",
+  "entry_ts": "2025-02-09 23:05:00",
+  "entry_i": 1739113500,
+  "exit_i": 1739449800
+ },
+ {
+  "ticker": "eurusd",
+  "direction": "short",
+  "entry_price": 1.03993,
+  "exit_price": 1.0556,
+  "shares": 1.0,
+  "pnl": -1578.89,
+  "pnl_quote": -1578.89,
+  "reason": "stop_loss",
+  "entry_ts": "2025-03-02 23:05:00",
+  "entry_i": 1740927900,
+  "exit_i": 1741064040
+ },
+ {
+  "ticker": "eurusd",
+  "direction": "long",
+  "entry_price": 1.0824799999999999,
+  "exit_price": 1.08166,
+  "shares": 1.0,
+  "pnl": -101.0,
+  "reason": "force_close",
+  "entry_ts": "2025-03-30 23:05:00",
+  "entry_i": 1743347100,
+  "exit_i": 1743436740
+ }
+]

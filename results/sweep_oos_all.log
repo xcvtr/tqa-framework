@@ -1,0 +1,23 @@
+audjpy   IS2025 лучший: 50/100sma n=18 -21пп | OOS +616пп n=12
+audjpy   IS2025 лучший: 50/100sma n=18 -21пп | OOS +616пп n=12
+saved results/oos_all_audjpy.json
+eurjpy   IS2025 лучший: 35/60ema n=10 +402пп | OOS -747пп n=7
+saved results/oos_all_eurjpy.json
+gbpjpy   IS2025 лучший: 50/60sma n=10 +239пп | OOS -1138пп n=7
+saved results/oos_all_gbpjpy.json
+usdjpy   IS2025 лучший: 35/60sma n=15 +655пп | OOS -1307пп n=9
+saved results/oos_all_usdjpy.json
+eurusd   IS2025 лучший: 50/100ema n=15 -383пп | OOS +395пп n=5
+saved results/oos_all_eurusd.json
+gbpusd   IS2025 лучший: 50/60ema n=11 +442пп | OOS -1088пп n=9
+saved results/oos_all_gbpusd.json
+audusd   IS2025 лучший: 50/100sma n=13 -179пп | OOS -45пп n=11
+saved results/oos_all_audusd.json
+usdcad: нет конфигов с n>=10
+saved results/oos_all_usdcad.json
+usdchf   IS2025 лучший: 50/60sma n=12 -342пп | OOS -128пп n=8
+saved results/oos_all_usdchf.json
+nzdusd: нет конфигов с n>=10
+saved results/oos_all_nzdusd.json
+euraud   IS2025 лучший: 20/100sma sl1.5 tr1.5 n=10 +1298пп | OOS +546пп n=5
+saved results/oos_all_euraud.json

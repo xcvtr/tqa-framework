@@ -1,0 +1,67 @@
+[
+ {
+  "ticker": "euraud",
+  "direction": "short",
+  "entry_price": 1.7174900000000002,
+  "exit_price": 1.7021,
+  "shares": 1.0,
+  "pnl": 1062.40512,
+  "pnl_quote": 1536.0,
+  "reason": "trailing_tp",
+  "entry_ts": "2026-01-25 23:05:00",
+  "entry_i": 1769353500,
+  "exit_i": 1770305100
+ },
+ {
+  "ticker": "euraud",
+  "direction": "short",
+  "entry_price": 1.6807500000000002,
+  "exit_price": 1.6409,
+  "shares": 1.0,
+  "pnl": 2801.15103,
+  "pnl_quote": 3981.0,
+  "reason": "trailing_tp",
+  "entry_ts": "2026-02-08 23:05:00",
+  "entry_i": 1770563100,
+  "exit_i": 1773897180
+ },
+ {
+  "ticker": "euraud",
+  "direction": "short",
+  "entry_price": 1.64898,
+  "exit_price": 1.6738,
+  "shares": 1.0,
+  "pnl": -1728.4282461999999,
+  "pnl_quote": -2492.47,
+  "reason": "stop_loss",
+  "entry_ts": "2026-03-22 23:05:00",
+  "entry_i": 1774191900,
+  "exit_i": 1774519080
+ },
+ {
+  "ticker": "euraud",
+  "direction": "short",
+  "entry_price": 1.6435,
+  "exit_price": 1.6323,
+  "shares": 1.0,
+  "pnl": 775.6386,
+  "pnl_quote": 1115.0,
+  "reason": "trailing_tp",
+  "entry_ts": "2026-04-19 23:05:00",
+  "entry_i": 1776611100,
+  "exit_i": 1790747040
+ },
+ {
+  "ticker": "euraud",
+  "direction": "short",
+  "entry_price": 1.61853,
+  "exit_price": 1.6016,
+  "shares": 1.0,
+  "pnl": 1183.6999999999998,
+  "pnl_quote": 1691.0,
+  "reason": "trailing_tp",
+  "entry_ts": "2026-10-04 23:05:00",
+  "entry_i": 1791126300,
+  "exit_i": 1793597280
+ }
+]

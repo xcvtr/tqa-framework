@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from tqa_m.connector.exchange_base import Signal
+from tqa_f.connector.exchange_base import Signal
 
 DEFAULT_PARAMS = {
     'sma_fast': 50,
@@ -41,17 +41,17 @@ def _msk_dt(ts):
         return None
     try:
         if isinstance(ts, (int, float)) and not isinstance(ts, bool):
-            return datetime.fromtimestamp(ts, tz=timezone(timedelta(hours=3)))
+            return datetime.fromtimestamp(ts, tz=timezone.utc)
         s = str(ts).replace('Z', '+00:00')
         dt = datetime.fromisoformat(s)
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone(timedelta(hours=3)))
-        return dt.astimezone(timezone(timedelta(hours=3)))
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
     except (ValueError, TypeError, OverflowError, OSError):
         return None
 
 
-def _msk_date(ts) -> str | None:
+def _utc_date(ts) -> str | None:
     dt = _msk_dt(ts)
     return dt.date().isoformat() if dt is not None else None
 
@@ -78,7 +78,7 @@ _MA = {'sma': _sma, 'ema': _ema}
 
 
 # detect зовётся раз/день, а окно баров растёт (~150 торговых дней). Полный
-# пересчёт _msk_date на каждый бар каждого вызова = O(N²) суммарно (главный
+# пересчёт _utc_date на каждый бар каждого вызова = O(N²) суммарно (главный
 # хот-спот). bars_raw передаётся из engine повторно, ts — тот же Timestamp
 # объект; кэш даты по значению ts превращает timezone-конвертацию в лукап.
 _DATE_CACHE = {}
@@ -86,11 +86,11 @@ _DATE_CACHE_LIMIT = 1 << 18      # ~262k баров достаточно для 
 _DATE_CACHE_KEYS: list = []
 
 
-def _cached_msk_date(ts):
+def _cached_utc_date(ts):
     d = _DATE_CACHE.get(ts)
     if d is not None:
         return d
-    d = _msk_date(ts)
+    d = _utc_date(ts)
     if d is not None:
         _DATE_CACHE[ts] = d
         _DATE_CACHE_KEYS.append(ts)
@@ -115,13 +115,13 @@ def detect(bars: list[dict], config: dict) -> list[Signal]:
 
     days: dict[str, list[dict]] = {}
     for b in bars:
-        d = _cached_msk_date(b.get('ts'))
+        d = _cached_utc_date(b.get('ts'))
         if d is None:
             continue
         days.setdefault(d, []).append(b)
     if os.environ.get('TREND_DEBUG'):
         print(f"TREND_DBG_EVERY {symbol} nbars={len(bars)} ndays={len(days)} "
-              f"first={_cached_msk_date(bars[0].get('ts')) if bars else '?'} "
+              f"first={_cached_utc_date(bars[0].get('ts')) if bars else '?'} "
               f"cur={len(days[max(days)]) if days else 0} "
               f"slow={'ok' if len(days) >= slow else f'no({len(days)})'}", flush=True)
     if not days:

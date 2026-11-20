@@ -1,0 +1,41 @@
+[
+ {
+  "ticker": "eurjpy",
+  "direction": "long",
+  "entry_price": 163.329,
+  "exit_price": 171.211,
+  "shares": 1.0,
+  "pnl": 5306.053343745371,
+  "pnl_quote": 788193.0,
+  "reason": "trailing_tp",
+  "entry_ts": "2025-06-01 23:05:00",
+  "entry_i": 1748790300,
+  "exit_i": 1753771920
+ },
+ {
+  "ticker": "eurjpy",
+  "direction": "long",
+  "entry_price": 172.037,
+  "exit_price": 175.191,
+  "shares": 1.0,
+  "pnl": 2107.8615490519755,
+  "pnl_quote": 315393.0,
+  "reason": "trailing_tp",
+  "entry_ts": "2025-08-10 23:05:00",
+  "entry_i": 1754838300,
+  "exit_i": 1760655360
+ },
+ {
+  "ticker": "eurjpy",
+  "direction": "long",
+  "entry_price": 175.841,
+  "exit_price": 184.05,
+  "shares": 1.0,
+  "pnl": 5227.133883875905,
+  "pnl_quote": 819693.0,
+  "reason": "force_close",
+  "entry_ts": "2025-10-19 23:05:00",
+  "entry_i": 1760886300,
+  "exit_i": 1767175140
+ }
+]

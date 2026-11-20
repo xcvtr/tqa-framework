@@ -9,10 +9,10 @@
 - `self_tester.py` и `runner.py` больше не содержат своих формул сайзинга и гейтов — вызывают `position_manager`.
 
 **2. Инфраструктура по контракту «2 контейнера».**
-- `docker/Dockerfile.detector` — только `tqa_m/connector/exchange_base.py`, `tqa_m/data`, `tqa_m/state`, `detect.py`, `data_provider.py`, `detector_cli.py`.
+- `docker/Dockerfile.detector` — только `tqa_f/connector/exchange_base.py`, `tqa_f/data`, `tqa_f/state`, `detect.py`, `data_provider.py`, `detector_cli.py`.
 - `docker/Dockerfile.position` — всё остальное.
 - `docker/compose.yml` — сервисы `detector` и `position`, креды через env с дефолтами, паролей в файле нет.
-- Проверка изоляции слоя: `docker run --rm tqa-m:detector python -c "import tqa_m.executor"` → `ModuleNotFoundError` ✓.
+- Проверка изоляции слоя: `docker run --rm tqa-f:detector python -c "import tqa_f.executor"` → `ModuleNotFoundError` ✓.
 
 **3. Один entrypoint, режим — флагом.**
 - `scripts/detector_cli.py`: `check` (self-sufficiency, БД не трогает) и `scan --dry-run` (CH → `detect(bars, config)`).
@@ -33,12 +33,12 @@
 Прогоны: `/tmp/pm_after.log`, `/tmp/pm_after.json`; `bash scripts/parity.sh` → PASS.
 
 ## Контейнеры (проверено запуском)
-- `tqa-m:detector` — `python scripts/detector_cli.py check` → `Self-sufficiency check passed`, exit 0.
-- `tqa-m:position` — `python scripts/position_cli.py --mode test --tickers MN --start 2026-09-01 --end 2026-11-11` → 4 сделки, ROI −0.65%, DD 0.72% (исполнение внутри образа работает).
+- `tqa-f:detector` — `python scripts/detector_cli.py check` → `Self-sufficiency check passed`, exit 0.
+- `tqa-f:position` — `python scripts/position_cli.py --mode test --tickers MN --start 2026-09-01 --end 2026-11-11` → 4 сделки, ROI −0.65%, DD 0.72% (исполнение внутри образа работает).
 
 ## Что осталось (не блокирует контракт слоёв)
 1. `runner.py` (live-петля) всё ещё свой цикл: перевести на `position_manager` целиком + `--persist pg` (state-journal).
-2. `tqa_m/executor/executor.py` (656 строк) — мёртвый дубль, никто не импортирует: удалить либо свести к `BrokerSim`.
+2. `tqa_f/executor/executor.py` (656 строк) — мёртвый дубль, никто не импортирует: удалить либо свести к `BrokerSim`.
 3. PgState: `save_signal`/`insert_closed` для live не реализованы — `--persist pg` пока заглушка.
 4. `check.py` в детектор-образе не проверяет отсутствие импорта `broker` (проверяется только executor вручную).
 

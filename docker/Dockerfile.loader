@@ -3,7 +3,7 @@ FROM python:3.11-slim
 RUN pip install clickhouse-connect
 
 WORKDIR /app
-COPY tqa_m/data/ ./tqa_m/data/
+COPY tqa_f/data/ ./tqa_f/data/
 COPY scripts/loader_cli.py ./scripts/loader_cli.py
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1

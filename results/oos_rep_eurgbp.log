@@ -1,0 +1,23 @@
+INFO:tqa_f.runner:Warmup: load from 2025-06-20, trade starts 2026-01-01
+INFO:tqa_f.runner:eurgbp: 506402 M1 bars, 101407 5m bars
+INFO:tqa_f.runner:Timeline: 443 trading days (2025-06-19 → 2026-11-17)
+INFO:tqa_f.engine:Day 1/443: 2025-06-19
+INFO:tqa_f.engine:Day 201/443: 2026-02-08
+INFO:tqa_f.engine:Day 401/443: 2026-09-29
+============================================================
+TQA-M BACKTEST RESULT
+============================================================
+Start equity:          200,000 USD
+Final equity:          204,767 USD
+Realized PnL:         4,766.52 USD
+ROI:                     2.38%
+Peak equity:           203,597 RUB
+Max DD:                  1.28%
+Total trades:                2
+Win rate:              100.00% (2W/0L)
+Signals generated:           2
+============================================================
+
+Per-ticker:
+   eurgbp:   2 trades | PnL=  4,766.52 USD |    476.7 пп | WR=100.0%
+Saved 2 trades → results/oos_rep_eurgbp.json

@@ -1,0 +1,28 @@
+[
+ {
+  "ticker": "eurgbp",
+  "direction": "short",
+  "entry_price": 0.87234,
+  "exit_price": 0.8582,
+  "shares": 1.0,
+  "pnl": 1873.80648,
+  "pnl_quote": 1404.0,
+  "reason": "trailing_tp",
+  "entry_ts": "2026-01-02 06:05:00",
+  "entry_i": 1767305100,
+  "exit_i": 1785328080
+ },
+ {
+  "ticker": "eurgbp",
+  "direction": "short",
+  "entry_price": 0.8544400000000001,
+  "exit_price": 0.83234,
+  "shares": 1.0,
+  "pnl": 2892.71157,
+  "pnl_quote": 2191.0,
+  "reason": "force_close",
+  "entry_ts": "2026-08-16 23:05:00",
+  "entry_i": 1786892700,
+  "exit_i": 1794931140
+ }
+]

@@ -2,7 +2,7 @@ import os
 import subprocess
 import sys
 
-ROOT = '/home/user/projects/tqa-m'
+ROOT = '/home/user/projects/tqa-f'
 
 
 def _run(args):

@@ -1,7 +1,7 @@
 """Paper-слой: сериализация позиции (рестарт без потери позы) и маршрут CLI."""
 import sys
 
-ROOT = '/home/user/projects/tqa-m'
+ROOT = '/home/user/projects/tqa-f'
 sys.path.insert(0, ROOT)
 
 from strategies.trend_sma.broker import Position  # noqa: E402

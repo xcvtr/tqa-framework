@@ -181,7 +181,10 @@ class PositionManager:
             mv = (prc - entry) / entry if pos.direction == 'long' else (entry - prc) / entry
             if mv >= pyr_step * step:
                 pos._pyred_n = step
-                pos.shares = int(round(pos._base_shares * (1.0 + pyr_add * step))) + pos._si_extra
+                _bs = pos._base_shares
+                _new = _bs * (1.0 + pyr_add * step) + pos._si_extra
+                # целый лот (канон MOEX) — как было; дробный (FX) — без округления до нуля
+                pos.shares = int(round(_new)) if isinstance(_bs, int) else round(_new, 6)
             else:
                 break
 
@@ -217,6 +220,29 @@ def size_position(base_eq: float, risk_pct: float, go_knur: float, go_limit: flo
     ct_risk = max(1, int(base_eq * risk_pct / go_limit))
     ct_go = int((base_eq * go_knur) / go_limit) if go_limit > 0 else 999
     return min(ct_risk, ct_go) if ct_go > 0 else ct_risk
+
+
+def frac_size_position(base_eq: float, risk_pct: float, go_knur: float, go_limit: float,
+                       lot_step: float) -> float:
+    """Дробный сайзинг (FX): порядок канона, лот кратен lot_step, минимум один шаг."""
+    if go_limit <= 0:
+        return lot_step
+    raw = min(base_eq * risk_pct / go_limit, base_eq * go_knur / go_limit)
+    return max(lot_step, int(raw / lot_step) * lot_step)
+
+
+def fx_size_position(equity: float, risk_pct: float, risk_per_lot: float,
+                     margin_per_lot: float, lot_step: float) -> float:
+    """FX: лот по риску на стопе, но не больше, чем позволяет маржа брокера.
+
+    risk_per_lot  = стоп% × цена × контракт (USD убытка на 1.0 лот при срабатывании)
+    margin_per_lot= маржа% × цена × контракт (USD залога на 1.0 лот)
+    """
+    if risk_per_lot <= 0 or lot_step <= 0:
+        return lot_step
+    by_risk = equity * risk_pct / risk_per_lot
+    by_margin = (equity / margin_per_lot) if margin_per_lot > 0 else float('inf')
+    return round(max(lot_step, int(min(by_risk, by_margin) / lot_step) * lot_step), 8)
 
 
 def check_portfolio_gates(ticker, lot_size, go_limit, go_used, equity, go_knur,

@@ -1,0 +1,80 @@
+[
+ {
+  "ticker": "usdcad",
+  "direction": "long",
+  "entry_price": 1.43766,
+  "exit_price": 1.4564,
+  "shares": 1.0,
+  "pnl": 1284.5334212116218,
+  "pnl_quote": 1871.0,
+  "reason": "trailing_tp",
+  "entry_ts": "2025-01-02 06:35:00",
+  "entry_i": 1735770900,
+  "exit_i": 1738567440
+ },
+ {
+  "ticker": "usdcad",
+  "direction": "short",
+  "entry_price": 1.43363,
+  "exit_price": 1.4239,
+  "shares": 1.0,
+  "pnl": 677.7684911398451,
+  "pnl_quote": 965.0,
+  "reason": "trailing_tp",
+  "entry_ts": "2025-03-23 23:05:00",
+  "entry_i": 1742742300,
+  "exit_i": 1743741780
+ },
+ {
+  "ticker": "usdcad",
+  "direction": "short",
+  "entry_price": 1.4227800000000002,
+  "exit_price": 1.3962,
+  "shares": 1.0,
+  "pnl": 1898.1584281815642,
+  "pnl_quote": 2650.0,
+  "reason": "trailing_tp",
+  "entry_ts": "2025-04-06 23:05:00",
+  "entry_i": 1743951900,
+  "exit_i": 1747005720
+ },
+ {
+  "ticker": "usdcad",
+  "direction": "short",
+  "entry_price": 1.3729,
+  "exit_price": 1.3936,
+  "shares": 1.0,
+  "pnl": -1491.3533295063146,
+  "pnl_quote": -2078.35,
+  "reason": "stop_loss",
+  "entry_ts": "2025-05-25 23:05:00",
+  "entry_i": 1748185500,
+  "exit_i": 1758790620
+ },
+ {
+  "ticker": "usdcad",
+  "direction": "long",
+  "entry_price": 1.39412,
+  "exit_price": 1.3731,
+  "shares": 1.0,
+  "pnl": -1536.732791517376,
+  "pnl_quote": -2110.18,
+  "reason": "stop_loss",
+  "entry_ts": "2025-09-28 23:05:00",
+  "entry_i": 1759071900,
+  "exit_i": 1765866780
+ },
+ {
+  "ticker": "usdcad",
+  "direction": "short",
+  "entry_price": 1.37951,
+  "exit_price": 1.3719700000000001,
+  "shares": 1.0,
+  "pnl": 535.7259998396466,
+  "pnl_quote": 735.0,
+  "reason": "force_close",
+  "entry_ts": "2025-12-21 23:05:00",
+  "entry_i": 1766329500,
+  "exit_i": 1767175140
+ }
+]

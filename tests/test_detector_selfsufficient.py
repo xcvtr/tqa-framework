@@ -9,7 +9,7 @@ DETECTOR_MODULES = [
     "strategies.trend_sma.detect",
     "strategies.trend_sma.data_provider",
 ]
-FORBIDDEN_IMPORTS = ("psycopg2", "tqa_m.state", "broker", "position_manager", "self_tester")
+FORBIDDEN_IMPORTS = ("psycopg2", "tqa_f.state", "broker", "position_manager", "self_tester")
 
 
 def _fresh(name):

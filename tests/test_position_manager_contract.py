@@ -4,10 +4,10 @@
 """
 import sys
 
-sys.path.insert(0, '/home/user/projects/tqa-m')
+sys.path.insert(0, '/home/user/projects/tqa-f')
 
 from strategies.trend_sma.broker import BrokerSim, Position
-from strategies.trend_sma.position_manager import PositionManager, size_position
+from strategies.trend_sma.position_manager import PositionManager, size_position, frac_size_position
 
 
 def _pos(direction='long', entry=100.0, shares=10, params=None):
@@ -49,3 +49,41 @@ def test_size_position_formula():
     assert size_position(200000, 0.025, 8.0, 458) == min(int(200000 * 0.025 / 458),
                                                          int(200000 * 8.0 / 458))
     assert size_position(200000, 0.025, 8.0, 458) == 10
+
+
+def test_frac_size_position_step():
+    """Дробный сайзинг FX: лот кратен шагу, минимум один шаг."""
+    assert frac_size_position(475, 0.025, 8.0, 10000, 0.01) == 0.01   # риск ниже шага → шаг
+    assert frac_size_position(200000, 0.025, 8.0, 10000, 0.01) == 0.5  # 200000*0.025/10000 = 0.5
+
+
+def test_pyramid_keeps_fractional_shares():
+    """Дробный лот не должен схлопываться в 0 при пирамидинге."""
+    b = BrokerSim(commission=0)
+    pos = _pos(entry=100.0, shares=0.01, params={'trail_mode': 'trend_sma', 'stop_loss': 1.5,
+                                                 'oi_pyramid_add': 1.0, 'oi_pyramid_thr': 0.015,
+                                                 'oi_pyramid_max': 6})
+    b.update(pos, 1, hi=102.0, lo=99.9, prc=102.0)
+    assert abs(pos.shares - 0.02) < 1e-9, f"ожидали 0.02, получили {pos.shares}"
+
+
+def test_fx_size_position_margin_cap():
+    """FX: лот по риску на стопе, ограниченный маржой; золото 0.01 шаг."""
+    risk_lot = 0.015 * 4400 * 100      # 6600 USD на 1.0 лот при стопе 1.5%
+    margin_lot = 0.06 * 4400 * 100     # 26400 USD залога на 1.0 лот
+    from strategies.trend_sma.position_manager import fx_size_position
+    assert fx_size_position(475, 0.025, risk_lot, margin_lot, 0.01) == 0.01   # ниже минимума
+    assert fx_size_position(2000, 0.025, risk_lot, margin_lot, 0.01) == 0.01  # 0.0076 → шаг
+    assert fx_size_position(10_000, 0.025, risk_lot, margin_lot, 0.01) == 0.03
+    # маржа жёстче риска: 30 000 строк при плече 16.7 → 1.13 лота, риск даёт 0.11
+    assert fx_size_position(30_000, 0.5, risk_lot, margin_lot, 0.01) == 1.13
+
+
+def test_er_series_gate():
+    """ER: прямой тренд → 1.0, пила → ~0, первые n точек 0."""
+    from strategies.trend_sma.engine import er_series
+    trend = [100.0 + i for i in range(80)]
+    saw = [100.0 + (2.0 if i % 2 else 0.0) for i in range(80)]
+    et, es = er_series(trend), er_series(saw)
+    assert et[:50] == [0.0] * 50 and et[50] == 1.0
+    assert es[50] < 0.1

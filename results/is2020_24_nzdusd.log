@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/home/user/projects/tqa-f/scripts/sma_sweep.py", line 133, in <module>
+    main()
+  File "/home/user/projects/tqa-f/scripts/sma_sweep.py", line 112, in main
+    rows = [run_cfg(md, tk, f, s, m, is_dates, rates, sl=sl, arm=arm, trail=tr)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/projects/tqa-f/scripts/sma_sweep.py", line 59, in run_cfg
+    cfg = Config(start=dates[0], eq_cap=eq0, specs=specs, fixed_lots=1.0, rates=rates,
+                       ~~~~~^^^
+IndexError: list index out of range

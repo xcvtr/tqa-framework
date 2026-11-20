@@ -27,16 +27,16 @@ import sys
 import time
 from datetime import datetime, timedelta as _td, timezone as _tz
 
-_MSK = _tz(_td(hours=3))   # журнал пишем в МСК, а не в TZ хоста/контейнера
+_MSK = _tz.utc
 
-sys.path.insert(0, '/home/user/projects/tqa-m')
+sys.path.insert(0, '/home/user/projects/tqa-f')
 
 from strategies.trend_sma.engine import (  # noqa: E402
-    Config, MarketData, State, msk_date, resample5, run_days,
+    Config, MarketData, State, utc_date, resample5, run_days,
 )
 from strategies.trend_sma.self_tester import load_specs  # noqa: E402
 
-log = logging.getLogger("tqa_m.live")
+log = logging.getLogger("tqa_f.live")
 
 _LOOKBACK_CAL_DAYS = 150
 
@@ -44,7 +44,7 @@ _LOOKBACK_CAL_DAYS = 150
 def _connector(args):
     """--connector mock → ExchangeMock (филл-цены через коннектор); none = как раньше."""
     if getattr(args, 'connector', 'none') == 'mock':
-        from tqa_m.connector.exchange_mock import ExchangeMock
+        from tqa_f.connector.exchange_mock import ExchangeMock
         return ExchangeMock()
     return None
 
@@ -97,7 +97,7 @@ class LiveDB:
 
     def __init__(self, schema: str, eq0: float):
         import psycopg2
-        from tqa_m.state.pg_state import PaperDB
+        from tqa_f.state.pg_state import PaperDB
         self.conn = psycopg2.connect(host='10.0.0.60', port=5432, dbname='moex', user='postgres')
         self.db = PaperDB(self.conn, schema)
         self.db.ensure(eq0)
@@ -156,7 +156,7 @@ class LiveMarket(MarketData):
         self.hist_b5.clear(); self._tid.clear()
         for tk in tickers:
             bars = [b for b in bars_by_tk.get(tk, [])
-                    if before is None or msk_date(b['ts']) < before]
+                    if before is None or utc_date(b['ts']) < before]
             if not bars:
                 log.warning(f"{tk}: нет истории")
                 continue
@@ -173,7 +173,7 @@ class LiveMarket(MarketData):
     def set_today(self, today: str, bars_by_tk: dict[str, list[dict]]) -> None:
         """Пересобрать представление данных на текущий момент."""
         for tk in self.hist_b5:
-            today_bars = [b for b in bars_by_tk.get(tk, []) if msk_date(b['ts']) == today]
+            today_bars = [b for b in bars_by_tk.get(tk, []) if utc_date(b['ts']) == today]
             hist_ts, hist_o, hist_h, hist_l, hist_p, hist_v = self.hist_b5[tk]
             ts5, o5, h5, l5, p5, v5 = resample5(today_bars) if today_bars else ([], [], [], [], [], [])
             self.m1_ts[tk] = [int(b['ts'].timestamp()) for b in today_bars]
@@ -224,7 +224,7 @@ def replay(tickers: list[str], date_from: str, date_to: str, args) -> list[dict]
     all_bars = _query_m1(tickers, load_start, (datetime.strptime(date_to, '%Y-%m-%d') + _td(days=1)).strftime('%Y-%m-%d'))
     db = LiveDB(args.pg_schema, float(args.eq_cap)) if getattr(args, 'pg_schema', '') else None
     for day in dates:
-        if not any(msk_date(b['ts']) == day for bars in all_bars.values() for b in bars):
+        if not any(utc_date(b['ts']) == day for bars in all_bars.values() for b in bars):
             continue
         snap = copy.deepcopy(st)
         md.load_history_bars(tickers, all_bars, before=day)

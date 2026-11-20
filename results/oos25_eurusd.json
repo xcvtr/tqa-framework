@@ -1,0 +1,80 @@
+[
+ {
+  "ticker": "eurusd",
+  "direction": "long",
+  "entry_price": 1.1373199999999999,
+  "exit_price": 1.1451,
+  "shares": 1.0,
+  "pnl": 774.0,
+  "pnl_quote": 774.0,
+  "reason": "trailing_tp",
+  "entry_ts": "2025-05-25 23:05:00",
+  "entry_i": 1748185500,
+  "exit_i": 1750269480
+ },
+ {
+  "ticker": "eurusd",
+  "direction": "long",
+  "entry_price": 1.14905,
+  "exit_price": 1.1644,
+  "shares": 1.0,
+  "pnl": 1524.0,
+  "pnl_quote": 1524.0,
+  "reason": "trailing_tp",
+  "entry_ts": "2025-06-22 23:05:00",
+  "entry_i": 1750604700,
+  "exit_i": 1752557700
+ },
+ {
+  "ticker": "eurusd",
+  "direction": "long",
+  "entry_price": 1.17569,
+  "exit_price": 1.1579,
+  "shares": 1.0,
+  "pnl": -1782.53,
+  "pnl_quote": -1782.53,
+  "reason": "stop_loss",
+  "entry_ts": "2025-07-27 23:05:00",
+  "entry_i": 1753628700,
+  "exit_i": 1753733340
+ },
+ {
+  "ticker": "eurusd",
+  "direction": "long",
+  "entry_price": 1.16459,
+  "exit_price": 1.173,
+  "shares": 1.0,
+  "pnl": 832.0,
+  "pnl_quote": 832.0,
+  "reason": "trailing_tp",
+  "entry_ts": "2025-08-10 23:05:00",
+  "entry_i": 1754838300,
+  "exit_i": 1758255900
+ },
+ {
+  "ticker": "eurusd",
+  "direction": "long",
+  "entry_price": 1.16548,
+  "exit_price": 1.1479,
+  "shares": 1.0,
+  "pnl": -1767.22,
+  "pnl_quote": -1767.22,
+  "reason": "stop_loss",
+  "entry_ts": "2025-10-19 23:05:00",
+  "entry_i": 1760886300,
+  "exit_i": 1762230660
+ },
+ {
+  "ticker": "eurusd",
+  "direction": "long",
+  "entry_price": 1.15523,
+  "exit_price": 1.17354,
+  "shares": 1.0,
+  "pnl": 1812.0,
+  "pnl_quote": 1812.0,
+  "reason": "force_close",
+  "entry_ts": "2025-11-09 23:05:00",
+  "entry_i": 1762700700,
+  "exit_i": 1767175140
+ }
+]

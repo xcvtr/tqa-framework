@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MOEX tqa-m папер (два контейнера: loader + position) → Matrix #paper.
+"""MOEX tqa-f папер (два контейнера: loader + position) → Matrix #paper.
 
 Алерт только при изменении: новый вход / закрытие / equity / сдохший контейнер /
 протухшие данные. Пустой stdout = ничего не шлём. Состояние в файле.
@@ -20,8 +20,8 @@ os.environ['NO_PROXY'] = os.environ['no_proxy'] = '*'
 
 import psycopg2  # noqa: E402
 
-STATE_FILE = os.path.expanduser('~/.hermes/state/tqa_m_paper_watch.json')
-SCHEMA = 'tqa_m_paper'
+STATE_FILE = os.path.expanduser('~/.hermes/state/tqa_f_paper_watch.json')
+SCHEMA = 'tqa_f_paper'
 CH = 'http://10.0.0.60:8123'
 
 
@@ -96,8 +96,8 @@ def read_state() -> dict:
         'last_close': str(last_close) if last_close else '',
         'upd': str(upd) if upd else '',
         'roll_last': roll_last, 'lag_days': int(lag_days or 0),
-        'c_paper': container_state('tqa-m-paper'),
-        'c_loader': container_state('tqa-m-loader'),
+        'c_paper': container_state('tqa-f-paper'),
+        'c_loader': container_state('tqa-f-loader'),
         'unrlz': {k: {'pnl': round(v['pnl'], 2), 'px': v['px'], 'dir': v['dir'],
                       'shares': v['shares'], 'entry': v['entry']} for k, v in unrlz.items()},
         'u_total': round(total_unrlz, 2),
@@ -123,7 +123,7 @@ def main() -> None:
     du = new['u_total'] - old.get('u_total', 0)
     moved = abs(du) >= 2000
     if opened or closed or new['closed'] != old.get('closed') or moved:
-        hdr = (f"📊 **tqa-m папер:** open={new['open']} eq={new['eq']:,.0f}₽ "
+        hdr = (f"📊 **tqa-f папер:** open={new['open']} eq={new['eq']:,.0f}₽ "
                f"peak={new['peak']:,.0f}₽ закрыто={new['closed']} (PnL {new['pnl']:+,.0f}₽)")
         if new['open']:
             hdr += f" | MTM {new['eq'] + new['u_total']:,.0f}₽ (незакр. {new['u_total']:+,.0f}₽)"
@@ -140,7 +140,7 @@ def main() -> None:
         if u:
             lines.append(f"   итого незакрытый: {new['u_total']:+,.0f}₽")
     if not opened and not closed and new['eq'] != old.get('eq'):
-        lines.append(f"📊 **tqa-m папер:** eq {old.get('eq'):,.0f}₽ → {new['eq']:,.0f}₽ "
+        lines.append(f"📊 **tqa-f папер:** eq {old.get('eq'):,.0f}₽ → {new['eq']:,.0f}₽ "
                      f"(open={new['open']}, закрыто={new['closed']})")
 
     # здоровье: контейнеры и свежесть данных

@@ -1,0 +1,22 @@
+/home/user/projects/tqa-f/tmp/fx8_filter_check.py:63: DeprecationWarning: datetime.datetime.utcfromtimestamp() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.fromtimestamp(timestamp, datetime.UTC).
+  d = _dt.utcfromtimestamp(ts).strftime('%Y-%m-%d') if ts > 1e9 else None
+audjpy: base n=100 пп=+10 | r2<=0.4 n=45 +1 vr5>=1.05 n=22 -4 sig<=0.81 n=26 +10 er>=0.2 n=34 +2 chop<=48.0 n=49 -13
+audusd: base n=100 пп=-8 | r2<=0.4 n=57 -3 vr5>=1.05 n=25 +6 sig<=0.81 n=32 -5 er>=0.2 n=32 -0 chop<=48.0 n=49 -0
+euraud: base n=64 пп=-4 | r2<=0.4 n=25 +2 vr5>=1.05 n=16 -2 sig<=0.81 n=12 +2 er>=0.2 n=16 +7 chop<=48.0 n=25 -7
+eurgbp: base n=46 пп=-4 | r2<=0.4 n=29 -0 vr5>=1.05 n=8 +3 sig<=0.81 n=13 +3 er>=0.2 n=8 +2 chop<=48.0 n=30 -1
+eurjpy: base n=65 пп=+12 | r2<=0.4 n=32 -23 vr5>=1.05 n=18 +8 sig<=0.81 n=22 +0 er>=0.2 n=15 +4 chop<=48.0 n=27 +8
+eurusd: base n=61 пп=+1 | r2<=0.4 n=30 +6 vr5>=1.05 n=13 -2 sig<=0.81 n=14 +11 er>=0.2 n=22 -1 chop<=48.0 n=37 +14
+gbpjpy: base n=73 пп=-11 | r2<=0.4 n=38 -26 vr5>=1.05 n=25 -25 sig<=0.81 n=25 -4 er>=0.2 n=14 -15 chop<=48.0 n=40 -35
+gbpusd: base n=74 пп=+12 | r2<=0.4 n=40 +7 vr5>=1.05 n=25 +16 sig<=0.81 n=24 -9 er>=0.2 n=22 +8 chop<=48.0 n=29 +5
+usdcad: base n=58 пп=-15 | r2<=0.4 n=31 -15 vr5>=1.05 n=14 +11 sig<=0.81 n=14 -2 er>=0.2 n=17 -4 chop<=48.0 n=30 +5
+usdchf: base n=69 пп=+5 | r2<=0.4 n=38 +6 vr5>=1.05 n=28 -5 sig<=0.81 n=22 -0 er>=0.2 n=21 -1 chop<=48.0 n=34 +6
+usdjpy: base n=66 пп=+60 | r2<=0.4 n=34 +44 vr5>=1.05 n=22 +9 sig<=0.81 n=16 +25 er>=0.2 n=27 +24 chop<=48.0 n=33 +23
+xauusd: base n=198 пп=+201 | r2<=0.4 n=64 +74 vr5>=1.05 n=51 +73 sig<=0.81 n=70 +82 er>=0.2 n=77 +177 chop<=48.0 n=84 +116
+
+=== ИТОГО 12 пар, 2019-2026 ===
+база: n=974 пп=+259 (+0.27 пп/сд)
+r2<=0.4: n=463 пп=+73 (+0.16 пп/сд) сохранено 48% сделок
+vr5>=1.05: n=267 пп=+89 (+0.33 пп/сд) сохранено 27% сделок
+sig<=0.81: n=290 пп=+114 (+0.39 пп/сд) сохранено 30% сделок
+er>=0.2: n=305 пп=+202 (+0.66 пп/сд) сохранено 31% сделок
+chop<=48.0: n=467 пп=+121 (+0.26 пп/сд) сохранено 48% сделок

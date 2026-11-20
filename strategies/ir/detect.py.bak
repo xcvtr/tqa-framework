@@ -1,0 +1,234 @@
+"""ir — impulse_retrace режим (tqa-c портирован в tqa-f).
+
+Механика: волна импульса + scale-in на откате к 50% (по умолчанию).
+Вход: первый bar дня по close, направление = режим импульса.
+Выход: SL 1.5%, трейл 1.5% от пика, пирамидинг +0.3x при +1%/+2% (2 ступени).
+
+bars: бары с ключами ts, open, high, low, close (M1 или 5m).
+TZ: дата дня берётся по МСК (UTC+3).
+"""
+from __future__ import annotations
+
+import json
+
+from datetime import datetime, timedelta, timezone
+
+from tqa_f.connector.exchange_base import Signal
+from tqa_f.data.bars import resample5
+
+DEFAULT_PARAMS = {
+    'i': 24,      # импульс: кол-во 5m-баров для определения волны
+    'w': 24,      # волна: кол-во 5m-баров от входа до выхода
+    'h': 12,      # пирамидинг: макс. ступени
+    'imb': 0.0,   # имбаланс: минимум логарифмического возврата для старта волны
+    'stop_loss': 1.5,   # SL %
+    'trail': 1.5,       # трейлинг %
+    'activation': 2.0,  # arm трейла активирует при движении >=2% от входа
+    'scale_in': True,   # доливка против входа
+    'scale_step': 0.5,  # % отката на первый уровень
+    'scale_levels': 2,  # число доливок
+    'pyr_add': 0.3,     # пирамидинг: добавка к базовому shares
+    'pyr_step': 0.01,   # пирамидинг: порог движения для следующей ступени (1%)
+    'pyr_max': 2,       # пирамидинг: макс. ступени (0, 1, 2)
+    'ma_type': 'sma',   # 'sma' | 'ema'
+    'window_days': 150, # окно истории
+    'source': 'roll',   # источник данных
+}
+
+
+def _msk_date(ts):
+    """Convert timestamp to MSK date string."""
+    if ts is None:
+        return None
+    try:
+        if isinstance(ts, (int, float)) and not isinstance(ts, bool):
+            dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+        else:
+            s = str(ts).replace('Z', '+00:00')
+            dt = datetime.fromisoformat(s)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone(timedelta(hours=3))).date().isoformat()
+    except (ValueError, TypeError, OverflowError, OSError):
+        return None
+
+
+def _sma(values, n):
+    """Simple moving average."""
+    if len(values) < n:
+        return None
+    return sum(values[-n:]) / n
+
+
+def _ema(values, n):
+    """Exponential moving average."""
+    if len(values) < n:
+        return None
+    k = 2.0 / (n + 1)
+    seed = sum(values[:n]) / n
+    e = seed
+    for v in values[n:]:
+        e = v * k + e * (1 - k)
+    return e
+
+
+_MA = {'sma': _sma, 'ema': _ema}
+
+
+def _build_waves(bars_5m, params):
+    """Build impulse_retrace waves from 5m bars."""
+    import numpy as np
+
+    i = int(params.get('i', DEFAULT_PARAMS['i']))
+    w = int(params.get('w', DEFAULT_PARAMS['w']))
+    h = int(params.get('h', DEFAULT_PARAMS['h']))
+    imb = float(params.get('imb', DEFAULT_PARAMS['imb']))
+    stop_loss = float(params.get('stop_loss', DEFAULT_PARAMS['stop_loss']))
+    trail = float(params.get('trail', DEFAULT_PARAMS['trail']))
+    activation = float(params.get('activation', DEFAULT_PARAMS['activation']))
+    scale_in = bool(params.get('scale_in', DEFAULT_PARAMS['scale_in']))
+    scale_step = float(params.get('scale_step', DEFAULT_PARAMS['scale_step']))
+    scale_levels = int(params.get('scale_levels', DEFAULT_PARAMS['scale_levels']))
+    pyr_add = float(params.get('pyr_add', DEFAULT_PARAMS['pyr_add']))
+    pyr_step = float(params.get('pyr_step', DEFAULT_PARAMS['pyr_step']))
+    pyr_max = int(params.get('pyr_max', DEFAULT_PARAMS['pyr_max']))
+
+    n = len(bars_5m)
+    if n == 0:
+        return []
+
+    h_arr = np.asarray([float(b['high']) for b in bars_5m])
+    l_arr = np.asarray([float(b['low']) for b in bars_5m])
+    c_arr = np.asarray([float(b['close']) for b in bars_5m])
+
+    waves = []
+    wave_id = 0
+    na = -1  # barrier from last wave
+
+    # Original logic: range(i, n), but if i >= n, nothing gets executed
+    # When we have exactly i bars, we need at least i+1 for detection to work
+    # Check if there are enough bars to generate waves. If not, return empty
+    if n < i + 1:
+        return waves
+
+    for t in range(i, n):
+        # Rolling max/min for window [t-i+1, t]
+        h_roll = h_arr[t - i + 1:t + 1].max()
+        l_roll = l_arr[t - i + 1:t + 1].min()
+
+        if not (np.isfinite(h_roll) and np.isfinite(l_roll)):
+            continue
+
+        # Check imbalance condition
+        if abs(np.log(c_arr[t] / (c_arr[t - i] + 1e-15))) < imb:
+            continue
+
+        hgt = h_roll
+        lot = l_roll
+        mid = (hgt + lot) / 2
+        sd = 1 if c_arr[t] >= mid else -1  # side: 1=LONG, -1=SHORT
+
+        # Primary entry (first retrace to mid)
+        tt = None
+        for bb in range(t + 1, min(t + 1 + w, n)):
+            if l_arr[bb] <= mid <= h_arr[bb]:
+                tt = bb
+                break
+
+        if tt is None or tt < na:
+            continue
+
+        ex_bar = tt + h
+
+        # Primary tranche at mid
+        tr_in = [(tt, mid)]
+        placed = tt
+
+        # Scale-in levels
+        if scale_in and scale_levels > 0:
+            for sl in range(1, scale_levels + 1):
+                _n = sl
+                hit_px = mid * (1.0 - _n * scale_step / 100.0) if sd == 1 else mid * (1.0 + _n * scale_step / 100.0)
+                hit = None
+                for bb in range(placed, min(ex_bar, n)):
+                    if l_arr[bb] <= hit_px <= h_arr[bb]:
+                        hit = bb
+                        break
+                if hit is not None:
+                    tr_in.append((hit, hit_px))
+                    placed = hit
+
+        # Pyramiding
+        _pyred_n = 0
+        for step in range(_pyred_n + 1, pyr_max):
+            mv = (c_arr[t] - mid) / mid if sd == 1 else (mid - c_arr[t]) / mid
+            if mv >= pyr_step * step:
+                _pyred_n = step
+            else:
+                break
+
+        waves.append(dict(
+            wave_id=wave_id,
+            t=t,
+            tt=tt,
+            mid=mid,
+            sd=sd,
+            tr_in=tr_in,
+            ex_bar=ex_bar,
+            _pyred_n=_pyred_n,
+        ))
+        wave_id += 1
+
+    # Sort by entry time
+    waves.sort(key=lambda w: w['tt'])
+    return waves
+
+
+def detect(bars: list[dict], config: dict) -> list[Signal]:
+    """IR detection: impulse_retrace waves → Signals."""
+    import os
+    _dbg = os.environ.get('IR_DEBUG')
+
+    params = {**DEFAULT_PARAMS, **config}
+    symbol = config.get('symbol', '')
+
+    # Convert M1 bars to 5m for IR detection
+    # resample5 returns tuple: (timestamps, opens, highs, lows, closes, volumes)
+    ts5, o5, h5, l5, p5, v5 = resample5(bars)
+
+    if not ts5:
+        return []
+
+    # Build bars_5m dict list for compatibility with _build_waves
+    bars_5m = [{'ts': ts5[i], 'open': float(o5[i]), 'high': float(h5[i]),
+                'low': float(l5[i]), 'close': float(p5[i])} for i in range(len(ts5))]
+
+    waves = _build_waves(bars_5m, params)
+
+    out = []
+    for w in waves:
+        for tr_idx, (bb, lv) in enumerate(w['tr_in']):
+            direction = 'LONG' if w['sd'] == 1 else 'SHORT'
+            price = float(lv)
+            ts = ts5[bb] if bb < len(ts5) else None
+            reason_data = dict(
+                wave=w['wave_id'],
+                tr=tr_idx,
+                lv=lv,
+                mid=w['mid'],
+                sd=w['sd'],
+            )
+            reason_str = json.dumps(reason_data, sort_keys=True)
+            out.append(Signal(
+                symbol=symbol,
+                direction=direction,
+                price=price,
+                timestamp=str(ts) if ts is not None else '',
+                strategy='ir',
+                reason=reason_str,
+            ))
+
+    if _dbg:
+        print(f"IR_DBG: nbars={len(bars_5m)} nwaves={len(waves)} signals={len(out)}", flush=True)
+
+    return out

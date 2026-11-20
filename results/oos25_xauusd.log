@@ -1,0 +1,23 @@
+INFO:tqa_f.runner:Warmup: load from 2024-08-03, trade starts 2025-01-01
+INFO:tqa_f.runner:xauusd: 490271 M1 bars, 98113 5m bars
+INFO:tqa_f.runner:Timeline: 441 trading days (2024-08-04 → 2025-12-31)
+INFO:tqa_f.engine:Day 1/441: 2024-08-04
+INFO:tqa_f.engine:Day 201/441: 2025-03-25
+INFO:tqa_f.engine:Day 401/441: 2025-11-14
+============================================================
+TQA-M BACKTEST RESULT
+============================================================
+Start equity:          200,000 USD
+Final equity:          317,880 USD
+Realized PnL:       117,879.67 USD
+ROI:                    58.94%
+Peak equity:           255,157 RUB
+Max DD:                  8.69%
+Total trades:               36
+Win rate:               63.89% (23W/13L)
+Signals generated:          36
+============================================================
+
+Per-ticker:
+   xauusd:  36 trades | PnL=117,879.67 USD |  11788.0 пп | WR=63.9%
+Saved 36 trades → results/oos25_xauusd.json

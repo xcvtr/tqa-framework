@@ -18,7 +18,7 @@ def test_paper_passes_min_ts_and_keeps_last_ts():
 
 
 def test_state_stores_last_ts():
-    src = open('tqa_m/state/pg_state.py').read()
+    src = open('tqa_f/state/pg_state.py').read()
     assert 'last_ts BIGINT' in src
     assert "'last_ts'" in src
 

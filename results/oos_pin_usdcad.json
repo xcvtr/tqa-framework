@@ -1,0 +1,93 @@
+[
+ {
+  "ticker": "usdcad",
+  "direction": "short",
+  "entry_price": 1.37169,
+  "exit_price": 1.3923,
+  "shares": 1.0,
+  "pnl": -1487.1612546417005,
+  "pnl_quote": -2070.53,
+  "reason": "stop_loss",
+  "entry_ts": "2026-01-02 06:05:00",
+  "entry_i": 1767305100,
+  "exit_i": 1768553640
+ },
+ {
+  "ticker": "usdcad",
+  "direction": "short",
+  "entry_price": 1.36961,
+  "exit_price": 1.3903,
+  "shares": 1.0,
+  "pnl": -1492.0268267058127,
+  "pnl_quote": -2073.41,
+  "reason": "stop_loss",
+  "entry_ts": "2026-01-25 23:05:00",
+  "entry_i": 1769353500,
+  "exit_i": 1774827180
+ },
+ {
+  "ticker": "usdcad",
+  "direction": "long",
+  "entry_price": 1.39455,
+  "exit_price": 1.3735,
+  "shares": 1.0,
+  "pnl": -1531.5663070214264,
+  "pnl_quote": -2110.82,
+  "reason": "stop_loss",
+  "entry_ts": "2026-04-05 23:05:00",
+  "entry_i": 1775401500,
+  "exit_i": 1776142740
+ },
+ {
+  "ticker": "usdcad",
+  "direction": "long",
+  "entry_price": 1.39496,
+  "exit_price": 1.4031,
+  "shares": 1.0,
+  "pnl": 571.5629610097137,
+  "pnl_quote": 802.0,
+  "reason": "trailing_tp",
+  "entry_ts": "2026-06-07 23:05:00",
+  "entry_i": 1780844700,
+  "exit_i": 1784108520
+ },
+ {
+  "ticker": "usdcad",
+  "direction": "short",
+  "entry_price": 1.38684,
+  "exit_price": 1.4077,
+  "shares": 1.0,
+  "pnl": -1487.091686676802,
+  "pnl_quote": -2093.26,
+  "reason": "stop_loss",
+  "entry_ts": "2026-08-16 23:05:00",
+  "entry_i": 1786892700,
+  "exit_i": 1790064840
+ },
+ {
+  "ticker": "usdcad",
+  "direction": "long",
+  "entry_price": 1.42515,
+  "exit_price": 1.4037,
+  "shares": 1.0,
+  "pnl": -1531.8409413038366,
+  "pnl_quote": -2150.72,
+  "reason": "stop_loss",
+  "entry_ts": "2026-10-04 23:05:00",
+  "entry_i": 1791126300,
+  "exit_i": 1792470600
+ },
+ {
+  "ticker": "usdcad",
+  "direction": "long",
+  "entry_price": 1.42736,
+  "exit_price": 1.4298199999999999,
+  "shares": 1.0,
+  "pnl": 158.761242673903,
+  "pnl_quote": 227.0,
+  "reason": "force_close",
+  "entry_ts": "2026-11-15 23:05:00",
+  "entry_i": 1794755100,
+  "exit_i": 1794931140
+ }
+]

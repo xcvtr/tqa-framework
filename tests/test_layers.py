@@ -1,11 +1,11 @@
 """Контракт слоёв: коннектор даёт филлы, детектор отделён от исполнителя."""
 import sys
 
-ROOT = '/home/user/projects/tqa-m'
+ROOT = '/home/user/projects/tqa-f'
 sys.path.insert(0, ROOT)
 
-from tqa_m.connector.exchange_base import ExchangeBase, ExchangeConfig, Signal  # noqa: E402
-from tqa_m.connector.exchange_mock import ExchangeMock  # noqa: E402
+from tqa_f.connector.exchange_base import ExchangeBase, ExchangeConfig, Signal  # noqa: E402
+from tqa_f.connector.exchange_mock import ExchangeMock  # noqa: E402
 
 
 def test_mock_implements_connector_contract():

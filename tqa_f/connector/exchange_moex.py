@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from tqa_m.connector.exchange_base import (
+from tqa_f.connector.exchange_base import (
     ExchangeBase, ExchangeConfig, Position, Signal,
 )
 

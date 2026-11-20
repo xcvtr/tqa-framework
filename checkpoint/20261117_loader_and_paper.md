@@ -1,11 +1,11 @@
 # Чекпойнт 2026-11-17 — loader-контейнер, папер запущен
 
 ## Что сделано
-1. **`tqa-m:loader`** (`docker/Dockerfile.loader`, `scripts/loader_cli.py`, `tqa_m/data/roll_loader.py`):
+1. **`tqa-f:loader`** (`docker/Dockerfile.loader`, `scripts/loader_cli.py`, `tqa_f/data/roll_loader.py`):
    единственный писатель в `moex.mt5_roll`. Читает живой `moex.mt5_continuous`, дописывает только
    вперёд (`bt > max(bt)` по тикеру), сверяет таймстемпы (MergeTree без дедупа), цикл 300 с внутри
    контейнера, `restart: unless-stopped`. Историю не переписывает.
-2. **Папер запущен**: `tqa-m-paper`, 28 тикеров, `--mode paper --persist pg --pg-schema tqa_m_paper
+2. **Папер запущен**: `tqa-f-paper`, 28 тикеров, `--mode paper --persist pg --pg-schema tqa_f_paper
    --start 2026-11-14 --poll 60 --save-every 300`. Логи видны (добавлен `basicConfig` + `PYTHONUNBUFFERED`).
 3. **Фикс восстановления ГО**: `LiveDB.restore` брал `go` из позиции (его там нет → 0), из-за чего
    портфельный GO-гейт после рестарта был открыт. Теперь ГО берётся из `futures.ticker_specs`.

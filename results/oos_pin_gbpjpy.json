@@ -1,0 +1,80 @@
+[
+ {
+  "ticker": "gbpjpy",
+  "direction": "long",
+  "entry_price": 214.036,
+  "exit_price": 210.8135,
+  "shares": 1.0,
+  "pnl": -2009.133530343271,
+  "pnl_quote": -322261.0,
+  "reason": "stop_loss",
+  "entry_ts": "2026-04-12 23:05:00",
+  "entry_i": 1776006300,
+  "exit_i": 1777520640
+ },
+ {
+  "ticker": "gbpjpy",
+  "direction": "long",
+  "entry_price": 214.237,
+  "exit_price": 215.622,
+  "shares": 1.0,
+  "pnl": 860.322528544273,
+  "pnl_quote": 138493.0,
+  "reason": "trailing_tp",
+  "entry_ts": "2026-05-24 23:05:00",
+  "entry_i": 1779635100,
+  "exit_i": 1785379140
+ },
+ {
+  "ticker": "gbpjpy",
+  "direction": "long",
+  "entry_price": 215.546,
+  "exit_price": 212.3038,
+  "shares": 1.0,
+  "pnl": -2075.644185525431,
+  "pnl_quote": -324226.0,
+  "reason": "stop_loss",
+  "entry_ts": "2026-08-16 23:05:00",
+  "entry_i": 1786892700,
+  "exit_i": 1788706800
+ },
+ {
+  "ticker": "gbpjpy",
+  "direction": "long",
+  "entry_price": 211.067,
+  "exit_price": 207.895,
+  "shares": 1.0,
+  "pnl": -2067.4277036583217,
+  "pnl_quote": -317207.5,
+  "reason": "stop_loss",
+  "entry_ts": "2026-09-06 23:05:00",
+  "entry_i": 1788707100,
+  "exit_i": 1788802080
+ },
+ {
+  "ticker": "gbpjpy",
+  "direction": "short",
+  "entry_price": 210.309,
+  "exit_price": 213.4696,
+  "shares": 1.0,
+  "pnl": -1996.50373945121,
+  "pnl_quote": -316070.5,
+  "reason": "stop_loss",
+  "entry_ts": "2026-09-20 23:05:00",
+  "entry_i": 1789916700,
+  "exit_i": 1793754480
+ },
+ {
+  "ticker": "gbpjpy",
+  "direction": "short",
+  "entry_price": 211.061,
+  "exit_price": 210.595,
+  "shares": 1.0,
+  "pnl": 284.59917992702105,
+  "pnl_quote": 45393.0,
+  "reason": "force_close",
+  "entry_ts": "2026-11-15 23:05:00",
+  "entry_i": 1794755100,
+  "exit_i": 1794931140
+ }
+]

@@ -1,11 +1,14 @@
 version: '3.8'
 
+name: tqa-f
+
 services:
-  detector:
+  f-detector:
     build:
       context: .
       dockerfile: docker/Dockerfile.detector
-    image: tqa-m:detector
+    image: tqa-f:detector
+    container_name: tqa-f-detector
     restart: unless-stopped
     environment:
       - CH_HOST=${CH_HOST:-10.0.0.60}
@@ -17,11 +20,12 @@ services:
       - PG_USER=${PG_USER:-postgres}
     command: python scripts/detector_cli.py scan --tickers MN --dry-run
 
-  loader:
+  f-loader:
     build:
       context: .
       dockerfile: docker/Dockerfile.loader
-    image: tqa-m:loader
+    image: tqa-f:loader
+    container_name: tqa-f-loader
     restart: unless-stopped
     environment:
       - CH_HOST=${CH_HOST:-10.0.0.60}
@@ -29,11 +33,12 @@ services:
       - CH_DB=${CH_DB:-moex}
     command: python scripts/loader_cli.py --loop 60
 
-  position:
+  f-position:
     build:
       context: .
       dockerfile: docker/Dockerfile.position
-    image: tqa-m:position
+    image: tqa-f:position
+    container_name: tqa-f-position
     restart: unless-stopped
     environment:
       - CH_HOST=${CH_HOST:-10.0.0.60}

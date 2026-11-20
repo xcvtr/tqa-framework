@@ -1,6 +1,6 @@
 """Контракт «один механизм»: бэктест и paper/live считают одной функцией run_days."""
 
-ROOT = '/home/user/projects/tqa-m'
+ROOT = '/home/user/projects/tqa-f'
 
 
 def _src(mod_path: str) -> str:

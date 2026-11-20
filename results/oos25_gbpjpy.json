@@ -1,0 +1,54 @@
+[
+ {
+  "ticker": "gbpjpy",
+  "direction": "long",
+  "entry_price": 193.012,
+  "exit_price": 195.764,
+  "shares": 1.0,
+  "pnl": 1915.5987442485332,
+  "pnl_quote": 275193.0,
+  "reason": "trailing_tp",
+  "entry_ts": "2025-05-18 23:05:00",
+  "entry_i": 1747580700,
+  "exit_i": 1751430960
+ },
+ {
+  "ticker": "gbpjpy",
+  "direction": "long",
+  "entry_price": 197.237,
+  "exit_price": 198.198,
+  "shares": 1.0,
+  "pnl": 652.9742732498879,
+  "pnl_quote": 96093.0,
+  "reason": "trailing_tp",
+  "entry_ts": "2025-07-06 23:05:00",
+  "entry_i": 1751814300,
+  "exit_i": 1759273200
+ },
+ {
+  "ticker": "gbpjpy",
+  "direction": "long",
+  "entry_price": 202.565,
+  "exit_price": 199.5205,
+  "shares": 1.0,
+  "pnl": -1986.6266019366794,
+  "pnl_quote": -304454.5,
+  "reason": "stop_loss",
+  "entry_ts": "2025-10-12 23:05:00",
+  "entry_i": 1760281500,
+  "exit_i": 1762275420
+ },
+ {
+  "ticker": "gbpjpy",
+  "direction": "long",
+  "entry_price": 202.209,
+  "exit_price": 210.944,
+  "shares": 1.0,
+  "pnl": 5562.560979498135,
+  "pnl_quote": 872293.0,
+  "reason": "force_close",
+  "entry_ts": "2025-11-09 23:05:00",
+  "entry_i": 1762700700,
+  "exit_i": 1767175140
+ }
+]

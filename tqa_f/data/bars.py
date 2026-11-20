@@ -11,10 +11,10 @@ import numpy as np
 _TF_MIN = 5  # detect_minutes канона (tf=5)
 
 
-def msk_date(ts) -> str | None:
+def utc_date(ts) -> str | None:
     try:
         if hasattr(ts, 'astimezone'):
-            return ts.astimezone(timezone(_td(hours=3))).date().isoformat()
+            return ts.astimezone(timezone.utc).date().isoformat()
         if isinstance(ts, str):
             return ts[:10]
     except Exception:
@@ -27,7 +27,7 @@ def group_days(ts_list) -> dict[str, tuple[int, int]]:
     out: dict[str, tuple[int, int]] = {}
     i0, cur = 0, None
     for i, t in enumerate(ts_list):
-        dk = msk_date(t)
+        dk = utc_date(t)
         if dk != cur:
             if cur is not None:
                 out[cur] = (i0, i)

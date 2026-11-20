@@ -1,0 +1,80 @@
+[
+ {
+  "ticker": "usdjpy",
+  "direction": "long",
+  "entry_price": 156.944,
+  "exit_price": 154.5838,
+  "shares": 1.0,
+  "pnl": -1526.037086846325,
+  "pnl_quote": -236023.0,
+  "reason": "stop_loss",
+  "entry_ts": "2026-01-02 06:05:00",
+  "entry_i": 1767305100,
+  "exit_i": 1769353200
+ },
+ {
+  "ticker": "usdjpy",
+  "direction": "long",
+  "entry_price": 157.509,
+  "exit_price": 155.1404,
+  "shares": 1.0,
+  "pnl": -1526.709463683766,
+  "pnl_quote": -236870.5,
+  "reason": "stop_loss",
+  "entry_ts": "2026-02-08 23:05:00",
+  "entry_i": 1770563100,
+  "exit_i": 1770666240
+ },
+ {
+  "ticker": "usdjpy",
+  "direction": "long",
+  "entry_price": 158.331,
+  "exit_price": 155.944,
+  "shares": 1.0,
+  "pnl": -1488.1949899624683,
+  "pnl_quote": -238703.5,
+  "reason": "stop_loss",
+  "entry_ts": "2026-03-08 23:05:00",
+  "entry_i": 1772982300,
+  "exit_i": 1777520640
+ },
+ {
+  "ticker": "usdjpy",
+  "direction": "long",
+  "entry_price": 158.847,
+  "exit_price": 160.966,
+  "shares": 1.0,
+  "pnl": 1316.2854551553628,
+  "pnl_quote": 211893.0,
+  "reason": "trailing_tp",
+  "entry_ts": "2026-05-24 23:05:00",
+  "entry_i": 1779635100,
+  "exit_i": 1785379140
+ },
+ {
+  "ticker": "usdjpy",
+  "direction": "short",
+  "entry_price": 159.212,
+  "exit_price": 155.284,
+  "shares": 1.0,
+  "pnl": 2529.6114066384166,
+  "pnl_quote": 392793.0,
+  "reason": "trailing_tp",
+  "entry_ts": "2026-08-24 11:05:00",
+  "entry_i": 1787540700,
+  "exit_i": 1789486620
+ },
+ {
+  "ticker": "usdjpy",
+  "direction": "short",
+  "entry_price": 157.85,
+  "exit_price": 159.498,
+  "shares": 1.0,
+  "pnl": -1040.8092891446915,
+  "pnl_quote": -166007.0,
+  "reason": "force_close",
+  "entry_ts": "2026-10-18 23:05:00",
+  "entry_i": 1792335900,
+  "exit_i": 1794931140
+ }
+]

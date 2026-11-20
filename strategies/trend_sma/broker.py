@@ -48,6 +48,7 @@ class Position:
         self._si_extra = 0          # trend_sma: накопленные scale-in доливки ПОВЕРХ pyr-позы
         self._best_price = 0.0      # best price в сторону прибыли (для trail от пика)
         self._skip_ts = None        # ts, до которого позицию не тикать (бар входа)
+        self.spread_half = 0.0      # половина спреда в цене: снимается на выходе
 
     @property
     def activation_pct(self):
@@ -132,11 +133,12 @@ class BrokerSim:
         """Закрыть по рынку: exit_prc + slippage + liquidity impact."""
         slip_mult = self.check_liquidity(pos.shares, volume)
         total_slippage = self.slippage_out * slip_mult
+        _half = float(getattr(pos, 'spread_half', 0.0) or 0.0)   # вторая половина спреда
 
         if pos.direction == 'long':
-            exit_px = exit_prc - total_slippage * pos.min_step
+            exit_px = exit_prc - total_slippage * pos.min_step - _half
         else:
-            exit_px = exit_prc + total_slippage * pos.min_step
+            exit_px = exit_prc + total_slippage * pos.min_step + _half
 
         if self.connector is not None:
             exit_px = self.connector.fill_price(pos.ticker, 'close', exit_px)

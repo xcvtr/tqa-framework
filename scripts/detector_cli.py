@@ -41,7 +41,7 @@ def check_self_sufficiency():
 
 def _daily_window(bars, as_of: str, keep: int = 149):
     """149 закрытых дневных баров до as_of + формирующийся первый 5м-бар дня as_of."""
-    from tqa_m.data.bars import group_days, msk_date, resample5
+    from tqa_f.data.bars import group_days, utc_date, resample5
 
     ts5, o5, h5, l5, p5, v5 = resample5(bars)
     day5 = group_days(ts5)
@@ -62,12 +62,12 @@ def scan(tickers, as_of: str, dry_run: bool, schema: str):
     from datetime import datetime, timedelta
     from strategies.trend_sma.data_provider import load_ticker_bars
     from strategies.trend_sma.detect import detect
-    from tqa_m.data.bars import msk_date
+    from tqa_f.data.bars import utc_date
 
     start = (datetime.strptime(as_of, '%Y-%m-%d') - timedelta(days=WARMUP_DAYS + 30)).strftime('%Y-%m-%d')
     pg = None
     if not dry_run:
-        from tqa_m.state.pg_state import PGState
+        from tqa_f.state.pg_state import PGState
         pg = PGState()
         pg.ensure_tables_live(schema)
 
@@ -113,9 +113,9 @@ def main():
         as_of = args.as_of
         if not as_of:
             from strategies.trend_sma.data_provider import load_ticker_bars
-            from tqa_m.data.bars import msk_date
+            from tqa_f.data.bars import utc_date
             bars = load_ticker_bars(tickers[0], '2000-01-01')
-            as_of = str(max(msk_date(b['ts']) for b in bars))
+            as_of = str(max(utc_date(b['ts']) for b in bars))
         if args.date_from and args.date_to:
             from datetime import datetime, timedelta
             d = datetime.strptime(args.date_from, '%Y-%m-%d')

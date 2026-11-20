@@ -1,0 +1,67 @@
+[
+ {
+  "ticker": "eurusd",
+  "direction": "short",
+  "entry_price": 1.15108,
+  "exit_price": 1.1685,
+  "shares": 1.0,
+  "pnl": -1745.62,
+  "pnl_quote": -1745.62,
+  "reason": "stop_loss",
+  "entry_ts": "2026-04-05 23:05:00",
+  "entry_i": 1775401500,
+  "exit_i": 1775575260
+ },
+ {
+  "ticker": "eurusd",
+  "direction": "long",
+  "entry_price": 1.1741899999999998,
+  "exit_price": 1.1565,
+  "shares": 1.0,
+  "pnl": -1780.29,
+  "pnl_quote": -1780.29,
+  "reason": "stop_loss",
+  "entry_ts": "2026-04-19 23:05:00",
+  "entry_i": 1776611100,
+  "exit_i": 1780639680
+ },
+ {
+  "ticker": "eurusd",
+  "direction": "short",
+  "entry_price": 1.1513900000000001,
+  "exit_price": 1.1687,
+  "shares": 1.0,
+  "pnl": -1740.08,
+  "pnl_quote": -1740.08,
+  "reason": "stop_loss",
+  "entry_ts": "2026-06-07 23:05:00",
+  "entry_i": 1780844700,
+  "exit_i": 1787179620
+ },
+ {
+  "ticker": "eurusd",
+  "direction": "long",
+  "entry_price": 1.1684999999999999,
+  "exit_price": 1.1509,
+  "shares": 1.0,
+  "pnl": -1765.75,
+  "pnl_quote": -1765.75,
+  "reason": "stop_loss",
+  "entry_ts": "2026-08-24 00:05:00",
+  "entry_i": 1787501100,
+  "exit_i": 1789552920
+ },
+ {
+  "ticker": "eurusd",
+  "direction": "short",
+  "entry_price": 1.14779,
+  "exit_price": 1.09915,
+  "shares": 1.0,
+  "pnl": 4845.0,
+  "pnl_quote": 4845.0,
+  "reason": "force_close",
+  "entry_ts": "2026-09-20 23:05:00",
+  "entry_i": 1789916700,
+  "exit_i": 1794931140
+ }
+]

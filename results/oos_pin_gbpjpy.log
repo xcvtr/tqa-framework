@@ -1,0 +1,23 @@
+INFO:tqa_f.runner:Warmup: load from 2025-06-20, trade starts 2026-01-01
+INFO:tqa_f.runner:gbpjpy: 495399 M1 bars, 99186 5m bars
+INFO:tqa_f.runner:Timeline: 432 trading days (2025-06-19 → 2026-11-17)
+INFO:tqa_f.engine:Day 1/432: 2025-06-19
+INFO:tqa_f.engine:Day 201/432: 2026-02-08
+INFO:tqa_f.engine:Day 401/432: 2026-10-12
+============================================================
+TQA-M BACKTEST RESULT
+============================================================
+Start equity:          200,000 USD
+Final equity:          192,996 USD
+Realized PnL:        -7,003.79 USD
+ROI:                    -3.50%
+Peak equity:           201,585 RUB
+Max DD:                  4.45%
+Total trades:                6
+Win rate:               33.33% (2W/4L)
+Signals generated:           6
+============================================================
+
+Per-ticker:
+   gbpjpy:   6 trades | PnL= -7,003.79 USD |     -7.0 пп | WR=33.3%
+Saved 6 trades → results/oos_pin_gbpjpy.json

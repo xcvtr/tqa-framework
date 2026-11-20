@@ -1,0 +1,68 @@
+INFO:tqa_f.runner:Warmup: load from 2017-09-15, trade starts 2019-01-01
+INFO:tqa_f.runner:xauusd: 2738978 M1 bars, 548441 5m bars
+INFO:tqa_f.runner:Timeline: 2437 trading days (2019-01-01 → 2026-11-17)
+INFO:tqa_f.engine:Day 1/2437: 2019-01-01
+INFO:tqa_f.engine:Day 201/2437: 2019-08-23
+INFO:tqa_f.engine:2020-01-21: СТОП по просадке 17.7% ≥ 15%
+INFO:tqa_f.engine:Day 401/2437: 2020-04-20
+INFO:tqa_f.engine:2020-06-09: торговля возобновлена, просадка 17.7%
+INFO:tqa_f.engine:2020-06-10: СТОП по просадке 17.7% ≥ 15%
+INFO:tqa_f.engine:2020-10-29: торговля возобновлена, просадка 17.7%
+INFO:tqa_f.engine:2020-10-30: СТОП по просадке 17.7% ≥ 15%
+INFO:tqa_f.engine:Day 601/2437: 2020-12-10
+INFO:tqa_f.engine:2021-03-21: торговля возобновлена, просадка 17.7%
+INFO:tqa_f.engine:2021-03-22: СТОП по просадке 17.7% ≥ 15%
+INFO:tqa_f.engine:Day 801/2437: 2021-08-02
+INFO:tqa_f.engine:2021-08-09: торговля возобновлена, просадка 11.7%
+INFO:tqa_f.engine:2021-08-25: СТОП по просадке 15.9% ≥ 15%
+INFO:tqa_f.engine:2022-01-12: торговля возобновлена, просадка 15.9%
+INFO:tqa_f.engine:2022-01-13: СТОП по просадке 15.9% ≥ 15%
+INFO:tqa_f.engine:Day 1001/2437: 2022-03-23
+INFO:tqa_f.engine:2022-06-03: торговля возобновлена, просадка 15.9%
+INFO:tqa_f.engine:2022-06-05: СТОП по просадке 15.9% ≥ 15%
+INFO:tqa_f.engine:2022-10-23: торговля возобновлена, просадка 15.9%
+INFO:tqa_f.engine:2022-10-24: СТОП по просадке 15.9% ≥ 15%
+INFO:tqa_f.engine:Day 1201/2437: 2022-11-13
+INFO:tqa_f.engine:2023-03-17: торговля возобновлена, просадка 13.5%
+INFO:tqa_f.engine:2023-04-20: СТОП по просадке 16.4% ≥ 15%
+INFO:tqa_f.engine:Day 1401/2437: 2023-07-10
+INFO:tqa_f.engine:2023-09-07: торговля возобновлена, просадка 16.4%
+INFO:tqa_f.engine:2023-09-08: СТОП по просадке 16.4% ≥ 15%
+INFO:tqa_f.engine:2024-01-29: торговля возобновлена, просадка 16.4%
+INFO:tqa_f.engine:2024-01-30: СТОП по просадке 16.4% ≥ 15%
+INFO:tqa_f.engine:Day 1601/2437: 2024-03-01
+INFO:tqa_f.engine:2024-06-18: торговля возобновлена, просадка 16.4%
+INFO:tqa_f.engine:2024-06-19: СТОП по просадке 16.4% ≥ 15%
+INFO:tqa_f.engine:Day 1801/2437: 2024-10-21
+INFO:tqa_f.engine:2024-11-06: торговля возобновлена, просадка 16.4%
+INFO:tqa_f.engine:2024-11-07: СТОП по просадке 16.4% ≥ 15%
+INFO:tqa_f.engine:2025-03-27: торговля возобновлена, просадка 16.4%
+INFO:tqa_f.engine:2025-03-28: СТОП по просадке 16.4% ≥ 15%
+INFO:tqa_f.engine:Day 2001/2437: 2025-06-12
+INFO:tqa_f.engine:2025-08-17: торговля возобновлена, просадка 16.4%
+INFO:tqa_f.engine:2025-08-18: СТОП по просадке 16.4% ≥ 15%
+INFO:tqa_f.engine:2026-01-05: торговля возобновлена, просадка 16.4%
+INFO:tqa_f.engine:2026-01-06: СТОП по просадке 16.4% ≥ 15%
+INFO:tqa_f.engine:Day 2201/2437: 2026-02-01
+INFO:tqa_f.engine:2026-05-27: торговля возобновлена, просадка 16.4%
+INFO:tqa_f.engine:2026-05-28: СТОП по просадке 16.4% ≥ 15%
+INFO:tqa_f.engine:Day 2401/2437: 2026-10-06
+INFO:tqa_f.engine:2026-10-28: торговля возобновлена, просадка 16.4%
+INFO:tqa_f.engine:2026-10-29: СТОП по просадке 16.4% ≥ 15%
+============================================================
+TQA-M BACKTEST RESULT
+============================================================
+Start equity:              475 USD
+Final equity:              535 USD
+Realized PnL:            59.63 USD
+ROI:                    12.55%
+Peak equity:               663 RUB
+Max DD:                 21.52%
+Total trades:               19
+Win rate:               52.63% (10W/9L)
+Signals generated:          19
+============================================================
+
+Per-ticker:
+   xauusd:  19 trades | PnL=     59.63 USD |      6.0 пп | WR=52.6%
+Saved 19 trades → results/ddc_s15c120.json

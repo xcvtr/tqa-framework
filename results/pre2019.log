@@ -1,0 +1,29 @@
+INFO:tqa_f.runner:Warmup: load from 2017-07-25, trade starts 2019-01-01
+INFO:tqa_f.runner:euraud: 1815990 M1 bars, 363599 5m bars
+INFO:tqa_f.runner:xauusd: 1745478 M1 bars, 349626 5m bars
+INFO:tqa_f.runner:Timeline: 1561 trading days (2019-01-01 → 2023-12-29)
+INFO:tqa_f.engine:Day 1/1561: 2019-01-01
+INFO:tqa_f.engine:Day 201/1561: 2019-08-22
+INFO:tqa_f.engine:Day 401/1561: 2020-04-12
+INFO:tqa_f.engine:Day 601/1561: 2020-12-01
+INFO:tqa_f.engine:Day 801/1561: 2021-07-23
+INFO:tqa_f.engine:Day 1001/1561: 2022-03-14
+INFO:tqa_f.engine:Day 1201/1561: 2022-11-02
+INFO:tqa_f.engine:Day 1401/1561: 2023-06-26
+============================================================
+TQA-M BACKTEST RESULT
+============================================================
+Start equity:          200,000 USD
+Final equity:          177,344 USD
+Realized PnL:       -22,656.46 USD
+ROI:                   -11.33%
+Peak equity:           235,440 RUB
+Max DD:                 31.67%
+Total trades:              146
+Win rate:               37.67% (55W/91L)
+Signals generated:         146
+============================================================
+
+Per-ticker:
+   euraud:  51 trades | PnL=-12,609.98 USD |  -1261.0 пп | WR=39.2%
+   xauusd:  95 trades | PnL=-10,046.48 USD |  -1004.6 пп | WR=36.8%

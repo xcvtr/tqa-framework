@@ -1,0 +1,29 @@
+INFO:tqa_f.runner:Warmup: load from 2025-04-26, trade starts 2026-01-01
+INFO:tqa_f.runner:xauusd: 533330 M1 bars, 106689 5m bars
+INFO:tqa_f.runner:Timeline: 477 trading days (2025-04-27 → 2026-11-17)
+INFO:tqa_f.engine:Day 1/477: 2025-04-27
+INFO:tqa_f.engine:Day 201/477: 2025-12-16
+INFO:tqa_f.engine:Day 401/477: 2026-08-07
+============================================================
+TQA-M BACKTEST RESULT
+============================================================
+Start equity:            2,000 USD
+Final equity:            2,373 USD
+Realized PnL:           373.49 USD
+ROI:                    18.67%
+Peak equity:             2,866 RUB
+Max DD:                 19.02%
+Total trades:               32
+Win rate:               53.12% (17W/15L)
+Signals generated:          32
+============================================================
+
+Per-ticker:
+Traceback (most recent call last):
+  File "/home/user/projects/tqa-f/strategies/trend_sma/self_tester.py", line 240, in <module>
+    sys.exit(main() or 0)
+             ^^^^^^
+  File "/home/user/projects/tqa-f/strategies/trend_sma/self_tester.py", line 198, in main
+    _pp = _spec(tk)['contract'] * _spec(tk)['pip']
+                                  ~~~~~~~~~^^^^^^^
+KeyError: 'pip'

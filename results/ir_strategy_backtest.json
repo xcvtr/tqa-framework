@@ -1,0 +1,106 @@
+{
+  "EURUSD": {
+    "12": {
+      "roi": 0.0,
+      "mdd": 0.0,
+      "total_signals": 0,
+      "roi_mdd_ratio": 0.0
+    },
+    "24": {
+      "roi": 0.0,
+      "mdd": 0.0,
+      "total_signals": 0,
+      "roi_mdd_ratio": 0.0
+    },
+    "36": {
+      "roi": 0.0,
+      "mdd": 0.0,
+      "total_signals": 0,
+      "roi_mdd_ratio": 0.0
+    },
+    "48": {
+      "roi": 0.0,
+      "mdd": 0.0,
+      "total_signals": 0,
+      "roi_mdd_ratio": 0.0
+    }
+  },
+  "GBPUSD": {
+    "12": {
+      "roi": 0.0,
+      "mdd": 0.0,
+      "total_signals": 0,
+      "roi_mdd_ratio": 0.0
+    },
+    "24": {
+      "roi": 0.0,
+      "mdd": 0.0,
+      "total_signals": 0,
+      "roi_mdd_ratio": 0.0
+    },
+    "36": {
+      "roi": 0.0,
+      "mdd": 0.0,
+      "total_signals": 0,
+      "roi_mdd_ratio": 0.0
+    },
+    "48": {
+      "roi": 0.0,
+      "mdd": 0.0,
+      "total_signals": 0,
+      "roi_mdd_ratio": 0.0
+    }
+  },
+  "USDJPY": {
+    "12": {
+      "roi": 0.0,
+      "mdd": 0.0,
+      "total_signals": 0,
+      "roi_mdd_ratio": 0.0
+    },
+    "24": {
+      "roi": 0.0,
+      "mdd": 0.0,
+      "total_signals": 0,
+      "roi_mdd_ratio": 0.0
+    },
+    "36": {
+      "roi": 0.0,
+      "mdd": 0.0,
+      "total_signals": 0,
+      "roi_mdd_ratio": 0.0
+    },
+    "48": {
+      "roi": 0.0,
+      "mdd": 0.0,
+      "total_signals": 0,
+      "roi_mdd_ratio": 0.0
+    }
+  },
+  "AUDUSD": {
+    "12": {
+      "roi": 0.0,
+      "mdd": 0.0,
+      "total_signals": 0,
+      "roi_mdd_ratio": 0.0
+    },
+    "24": {
+      "roi": 0.0,
+      "mdd": 0.0,
+      "total_signals": 0,
+      "roi_mdd_ratio": 0.0
+    },
+    "36": {
+      "roi": 0.0,
+      "mdd": 0.0,
+      "total_signals": 0,
+      "roi_mdd_ratio": 0.0
+    },
+    "48": {
+      "roi": 0.0,
+      "mdd": 0.0,
+      "total_signals": 0,
+      "roi_mdd_ratio": 0.0
+    }
+  }
+}

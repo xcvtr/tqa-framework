@@ -1,0 +1,281 @@
+[
+ {
+  "ticker": "xauusd",
+  "dir": "long",
+  "entry_ts": "2026-01-02 06:05:00",
+  "entry": 4377.39,
+  "exit": 4311.669,
+  "reason": "stop_loss",
+  "pnl_quote": -6579.09
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "long",
+  "entry_ts": "2026-01-04 23:13:00",
+  "entry": 4328.54,
+  "exit": 4429.81,
+  "reason": "trailing_tp",
+  "pnl_quote": 10120.0
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "long",
+  "entry_ts": "2026-01-11 23:05:00",
+  "entry": 4521.36,
+  "exit": 4565.22,
+  "reason": "trailing_tp",
+  "pnl_quote": 4379.0
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "long",
+  "entry_ts": "2026-01-18 23:05:00",
+  "entry": 4648.65,
+  "exit": 4809.28,
+  "reason": "trailing_tp",
+  "pnl_quote": 16056.0
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "long",
+  "entry_ts": "2026-01-25 23:45:00",
+  "entry": 4982.35,
+  "exit": 5027.72,
+  "reason": "trailing_tp",
+  "pnl_quote": 4530.0
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "long",
+  "entry_ts": "2026-02-01 23:05:00",
+  "entry": 4829.27,
+  "exit": 4756.771,
+  "reason": "stop_loss",
+  "pnl_quote": -7256.91
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "long",
+  "entry_ts": "2026-02-08 23:05:00",
+  "entry": 4987.07,
+  "exit": 5022.62,
+  "reason": "trailing_tp",
+  "pnl_quote": 3548.0
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "long",
+  "entry_ts": "2026-02-15 23:05:00",
+  "entry": 5013.78,
+  "exit": 4938.513,
+  "reason": "stop_loss",
+  "pnl_quote": -7533.67
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "long",
+  "entry_ts": "2026-02-22 23:05:00",
+  "entry": 5116.98,
+  "exit": 5157.17,
+  "reason": "trailing_tp",
+  "pnl_quote": 4012.0
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "long",
+  "entry_ts": "2026-03-01 23:05:00",
+  "entry": 5357.51,
+  "exit": 5277.027,
+  "reason": "stop_loss",
+  "pnl_quote": -8055.26
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "long",
+  "entry_ts": "2026-03-08 23:05:00",
+  "entry": 5116.94,
+  "exit": 5040.066,
+  "reason": "stop_loss",
+  "pnl_quote": -7694.41
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "long",
+  "entry_ts": "2026-03-15 23:05:00",
+  "entry": 5006.02,
+  "exit": 4930.81,
+  "reason": "stop_loss",
+  "pnl_quote": -7528.03
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "short",
+  "entry_ts": "2026-04-12 23:05:00",
+  "entry": 4658.76,
+  "exit": 4728.761,
+  "reason": "stop_loss",
+  "pnl_quote": -7007.14
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "short",
+  "entry_ts": "2026-04-19 23:05:00",
+  "entry": 4775.61,
+  "exit": 4754.26,
+  "reason": "trailing_tp",
+  "pnl_quote": 2128.0
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "short",
+  "entry_ts": "2026-04-26 23:05:00",
+  "entry": 4681.06,
+  "exit": 4579.02,
+  "reason": "trailing_tp",
+  "pnl_quote": 10197.0
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "short",
+  "entry_ts": "2026-05-03 23:05:00",
+  "entry": 4618.8,
+  "exit": 4572.7,
+  "reason": "trailing_tp",
+  "pnl_quote": 4603.0
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "short",
+  "entry_ts": "2026-05-10 23:05:00",
+  "entry": 4696.27,
+  "exit": 4766.834,
+  "reason": "stop_loss",
+  "pnl_quote": -7063.4
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "short",
+  "entry_ts": "2026-05-17 23:05:00",
+  "entry": 4545.15,
+  "exit": 4463.02,
+  "reason": "trailing_tp",
+  "pnl_quote": 8206.0
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "short",
+  "entry_ts": "2026-05-31 23:05:00",
+  "entry": 4539.44,
+  "exit": 4493.89,
+  "reason": "trailing_tp",
+  "pnl_quote": 4548.0
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "short",
+  "entry_ts": "2026-06-07 23:05:00",
+  "entry": 4325.54,
+  "exit": 4255.68,
+  "reason": "trailing_tp",
+  "pnl_quote": 6979.0
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "short",
+  "entry_ts": "2026-06-21 23:05:00",
+  "entry": 4159.27,
+  "exit": 4031.1,
+  "reason": "trailing_tp",
+  "pnl_quote": 12810.0
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "short",
+  "entry_ts": "2026-06-28 23:05:00",
+  "entry": 4067.45,
+  "exit": 4005.5,
+  "reason": "trailing_tp",
+  "pnl_quote": 6188.0
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "short",
+  "entry_ts": "2026-07-05 23:05:00",
+  "entry": 4189.14,
+  "exit": 4085.34,
+  "reason": "trailing_tp",
+  "pnl_quote": 10373.0
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "short",
+  "entry_ts": "2026-07-12 23:05:00",
+  "entry": 4070.04,
+  "exit": 4088.31,
+  "reason": "trailing_tp",
+  "pnl_quote": -1834.0
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "short",
+  "entry_ts": "2026-07-19 23:05:00",
+  "entry": 3994.73,
+  "exit": 4054.771,
+  "reason": "stop_loss",
+  "pnl_quote": -6011.09
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "short",
+  "entry_ts": "2026-07-26 23:05:00",
+  "entry": 4086.88,
+  "exit": 4070.9,
+  "reason": "trailing_tp",
+  "pnl_quote": 1591.0
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "short",
+  "entry_ts": "2026-08-02 21:05:00",
+  "entry": 4077.7,
+  "exit": 4138.926,
+  "reason": "stop_loss",
+  "pnl_quote": -6129.55
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "long",
+  "entry_ts": "2026-09-20 23:05:00",
+  "entry": 4373.92,
+  "exit": 4308.251,
+  "reason": "stop_loss",
+  "pnl_quote": -6573.88
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "long",
+  "entry_ts": "2026-09-27 23:05:00",
+  "entry": 4264.52,
+  "exit": 4200.492,
+  "reason": "stop_loss",
+  "pnl_quote": -6409.78
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "short",
+  "entry_ts": "2026-11-08 23:05:00",
+  "entry": 4061.25,
+  "exit": 4122.229,
+  "reason": "stop_loss",
+  "pnl_quote": -6104.88
+ },
+ {
+  "ticker": "xauusd",
+  "dir": "short",
+  "entry_ts": "2026-11-15 23:05:00",
+  "entry": 3884.97,
+  "exit": 3764.82,
+  "reason": "force_close",
+  "pnl_quote": 11996.0
+ }
+]

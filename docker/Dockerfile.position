@@ -6,7 +6,7 @@ RUN pip install numpy clickhouse-connect psycopg2-binary
 WORKDIR /app
 
 # Копируем все необходимые компоненты для position
-COPY tqa_m/ ./tqa_m/
+COPY tqa_f/ ./tqa_f/
 COPY strategies/trend_sma/ ./strategies/trend_sma/
 COPY scripts/position_cli.py ./scripts/position_cli.py
 

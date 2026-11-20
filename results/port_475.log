@@ -1,0 +1,63 @@
+=== 475 USD, 0.01 лота, пул по 2020-2024 ===
+INFO:tqa_f.runner:Warmup: load from 2025-06-20, trade starts 2026-01-01
+INFO:tqa_f.runner:audjpy: 494455 M1 bars, 99026 5m bars
+INFO:tqa_f.runner:audusd: 512028 M1 bars, 102509 5m bars
+INFO:tqa_f.runner:eurusd: 512055 M1 bars, 102509 5m bars
+INFO:tqa_f.runner:gbpjpy: 495399 M1 bars, 99186 5m bars
+INFO:tqa_f.runner:gbpusd: 511948 M1 bars, 102502 5m bars
+INFO:tqa_f.runner:Timeline: 443 trading days (2025-06-19 → 2026-11-17)
+INFO:tqa_f.engine:Day 1/443: 2025-06-19
+INFO:tqa_f.engine:Day 201/443: 2026-02-08
+INFO:tqa_f.engine:Day 401/443: 2026-09-29
+============================================================
+TQA-M BACKTEST RESULT
+============================================================
+Start equity:              475 USD
+Final equity:              272 USD
+Realized PnL:          -202.67 USD
+ROI:                   -42.67%
+Peak equity:               729 RUB
+Max DD:                202.11%
+Total trades:               44
+Win rate:               34.09% (15W/29L)
+Signals generated:          44
+============================================================
+
+Per-ticker:
+   audjpy:  13 trades | PnL=    -18.44 USD |     -0.0 пп | WR=46.2%
+   audusd:  12 trades | PnL=      9.21 USD |      0.9 пп | WR=41.7%
+   eurusd:   6 trades | PnL=    -50.22 USD |     -5.0 пп | WR=16.7%
+   gbpjpy:   7 trades | PnL=   -106.75 USD |     -0.1 пп | WR=14.3%
+   gbpusd:   6 trades | PnL=    -36.47 USD |     -3.6 пп | WR=33.3%
+Saved 44 trades → results/pool475_long.json
+=== 475 USD, 0.01 лота, пул по 2026 ===
+INFO:tqa_f.runner:Warmup: load from 2025-06-20, trade starts 2026-01-01
+INFO:tqa_f.runner:audusd: 512028 M1 bars, 102509 5m bars
+INFO:tqa_f.runner:euraud: 508872 M1 bars, 101877 5m bars
+INFO:tqa_f.runner:eurgbp: 508854 M1 bars, 101877 5m bars
+INFO:tqa_f.runner:xauusd: 485468 M1 bars, 97119 5m bars
+INFO:tqa_f.runner:Timeline: 443 trading days (2025-06-19 → 2026-11-17)
+INFO:tqa_f.engine:Day 1/443: 2025-06-19
+INFO:tqa_f.engine:Day 201/443: 2026-02-08
+INFO:tqa_f.engine:Day 401/443: 2026-09-29
+============================================================
+TQA-M BACKTEST RESULT
+============================================================
+Start equity:              475 USD
+Final equity:              834 USD
+Realized PnL:           359.33 USD
+ROI:                    75.65%
+Peak equity:               908 RUB
+Max DD:                 51.45%
+Total trades:               48
+Win rate:               56.25% (27W/21L)
+Signals generated:          48
+============================================================
+
+Per-ticker:
+   audusd:  12 trades | PnL=      9.21 USD |      0.9 пп | WR=41.7%
+   euraud:   7 trades | PnL=     71.48 USD |      7.1 пп | WR=71.4%
+   eurgbp:   2 trades | PnL=     41.84 USD |      4.2 пп | WR=100.0%
+   xauusd:  27 trades | PnL=    236.79 USD |     23.7 пп | WR=55.6%
+Saved 48 trades → results/pool475_oos.json
+DONE

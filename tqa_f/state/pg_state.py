@@ -14,7 +14,7 @@ import logging
 import psycopg2
 import psycopg2.extras
 
-log = logging.getLogger("tqa_m.state.pg_state")
+log = logging.getLogger("tqa_f.state.pg_state")
 
 
 def _pg_url() -> str:
@@ -340,7 +340,7 @@ class PGState:
             )
 
 
-# ─── Многопозиционный state-journal (перенесено из мёртвого tqa_m/executor) ───
+# ─── Многопозиционный state-journal (перенесено из мёртвого tqa_f/executor) ───
 # CH = сырьё, PG = состояние; бар в state не попадает.
 
 def load_ticker_specs_pg() -> dict:

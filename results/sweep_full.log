@@ -1,0 +1,26 @@
+gbpjpy   IS2024-25 лучший: 35/60sma n=19 +1952пп | OOS -1665пп n=7
+saved results/sweep_full_gbpjpy.json
+audjpy   IS2024-25 лучший: 20/100ema n=28 +1039пп | OOS -289пп n=13
+saved results/sweep_full_audjpy.json
+eurjpy   IS2024-25 лучший: 50/100ema n=19 +2205пп | OOS -747пп n=7
+saved results/sweep_full_eurjpy.json
+usdjpy   IS2024-25 лучший: 20/60sma n=25 +1961пп | OOS -721пп n=8
+saved results/sweep_full_usdjpy.json
+eurusd   IS2024-25 лучший: 10/60sma n=19 -594пп | OOS -502пп n=6
+saved results/sweep_full_eurusd.json
+gbpusd   IS2024-25 лучший: 50/60sma n=18 +620пп | OOS -365пп n=6
+saved results/sweep_full_gbpusd.json
+audusd   IS2024-25 лучший: 10/60ema sl1.5 tr1.5 n=23 -192пп | OOS +92пп n=12
+saved results/sweep_full_audusd.json
+usdcad   IS2024-25 лучший: 50/100sma sl1.5 tr1.5 n=11 -641пп | OOS -643пп n=7
+saved results/sweep_full_usdcad.json
+usdchf   IS2024-25 лучший: 50/60sma sl1.5 tr1.5 n=22 +105пп | OOS -128пп n=8
+saved results/sweep_full_usdchf.json
+nzdusd: нет конфигов с n>=10
+saved results/sweep_full_nzdusd.json
+euraud   IS2024-25 лучший: 10/100ema sl1.5 tr1.5 n=17 +1156пп | OOS +1018пп n=7
+saved results/sweep_full_euraud.json
+eurgbp   IS2024-25 лучший: 20/100ema sl1.5 tr1.5 n=10 -766пп | OOS +316пп n=2
+saved results/sweep_full_eurgbp.json
+xauusd   IS2024-25 лучший: 50/100sma sl1.5 tr1.5 n=62 +12429пп | OOS +2368пп n=27
+saved results/sweep_full_xauusd.json

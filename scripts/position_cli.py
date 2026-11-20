@@ -16,7 +16,7 @@ def main():
     ap = argparse.ArgumentParser(description='TQA-M position layer')
     ap.add_argument('--mode', choices=['paper', 'test'], default='test')
     ap.add_argument('--persist', choices=['pg', 'none'], default='none')
-    ap.add_argument('--pg-schema', default='')   # paper по умолчанию пишет в tqa_m_paper
+    ap.add_argument('--pg-schema', default='')   # paper по умолчанию пишет в tqa_f_paper
     ap.add_argument('--reset-state', action='store_true')
     ap.add_argument('--connector', choices=['mock', 'none', 'mt5'], default='none')
     ap.add_argument('--signals', choices=['local', 'pg'], default='local')
@@ -37,7 +37,7 @@ def main():
         from strategies.trend_sma.self_tester import main as bt_main
         argv = ['self_tester', '--tickers', ','.join(tickers), '--start', args.start,
                 '--end', args.end, '--persist', args.persist,
-                '--pg-schema', args.pg_schema or 'tqa_m_bt',
+                '--pg-schema', args.pg_schema or 'tqa_f_bt',
                 '--connector', args.connector, '--signals', args.signals,
                 '--signals-schema', args.signals_schema]
         if args.reset_state:
@@ -51,7 +51,7 @@ def main():
                 '--save-every', str(args.save_every), '--start', args.start,
                 '--connector', args.connector, '--signals', args.signals,
                 '--signals-schema', args.signals_schema,
-                '--pg-schema', args.pg_schema or 'tqa_m_paper']
+                '--pg-schema', args.pg_schema or 'tqa_f_paper']
     live.main()
 
 

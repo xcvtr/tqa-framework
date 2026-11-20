@@ -1,0 +1,23 @@
+INFO:tqa_f.runner:Warmup: load from 2024-08-03, trade starts 2025-01-01
+INFO:tqa_f.runner:usdchf: 508409 M1 bars, 101863 5m bars
+INFO:tqa_f.runner:Timeline: 442 trading days (2024-08-04 → 2025-12-31)
+INFO:tqa_f.engine:Day 1/442: 2024-08-04
+INFO:tqa_f.engine:Day 201/442: 2025-03-25
+INFO:tqa_f.engine:Day 401/442: 2025-11-13
+============================================================
+TQA-M BACKTEST RESULT
+============================================================
+Start equity:          200,000 USD
+Final equity:          194,963 USD
+Realized PnL:        -5,036.85 USD
+ROI:                    -2.52%
+Peak equity:           201,710 RUB
+Max DD:                  3.50%
+Total trades:               12
+Win rate:               33.33% (4W/8L)
+Signals generated:          12
+============================================================
+
+Per-ticker:
+   usdchf:  12 trades | PnL= -5,036.85 USD |   -503.7 пп | WR=33.3%
+Saved 12 trades → results/oos25_usdchf.json
